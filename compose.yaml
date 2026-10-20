@@ -1,0 +1,59 @@
+name: qrcode-checkin
+services:
+  app:
+    build: .
+    platform: linux/arm64
+    restart: unless-stopped
+    environment:
+      CHECKIN_ENV: production
+      EVENT_NAME: ${EVENT_NAME:-導生晚宴}
+      PUBLIC_BASE_URL: https://${DOMAIN:?Set DOMAIN in .env}
+      SECRET_KEY: ${SECRET_KEY:?Set a random SECRET_KEY in .env}
+      DATABASE_PATH: /data/checkin.sqlite3
+      TRUST_PROXY: '1'
+      TZ: Asia/Taipei
+    volumes:
+      - checkin_data:/data
+    expose:
+      - '8000'
+    networks:
+      - checkin
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /app/instance:rw,noexec,nosuid,uid=10001,gid=10001,mode=0700,size=4m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, python, -c, "import os,urllib.request; u=urllib.request.Request('http://127.0.0.1:8000/healthz',headers={'Host':os.environ['PUBLIC_BASE_URL'].split('://')[1]}); urllib.request.urlopen(u,timeout=5)"]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 20s
+  proxy:
+    image: caddy:2-alpine
+    platform: linux/arm64
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL in .env}
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - checkin
+    depends_on:
+      app:
+        condition: service_healthy
+    security_opt: [no-new-privileges:true]
+networks:
+  checkin:
+volumes:
+  checkin_data:
+  caddy_data:
+  caddy_config:

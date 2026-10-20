@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest==8.4.2
+playwright==1.60.0
+zxing-cpp==2.3.0

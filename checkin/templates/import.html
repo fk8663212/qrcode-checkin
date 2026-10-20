@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="page-heading"><p class="eyebrow">GUEST LIST</p><h1>匯入名冊</h1><p class="muted">先預覽、核對，再確認匯入。以參加者編號識別，同名者可使用不同編號。</p></section>
+<form method="post" enctype="multipart/form-data" class="card stack"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>UTF-8 CSV（1 MB 以下，最多 200 人）<input type="file" name="file" accept=".csv,text/csv" required></label><p class="small muted">必填欄名：attendee_id、name；選填：affiliation、table_no。重匯會更新名冊欄位（空白會清空選填資料），保留票券及報到紀錄。</p><button type="submit" class="primary">上傳並預覽</button></form>
+{% if preview %}<section class="card"><h2>匯入預覽</h2><div class="preview-counts"><span>新增 <strong>{{ preview.added }}</strong> 人</span><span>更新 <strong>{{ preview.updated }}</strong> 人</span><span>錯誤 <strong>{{ preview.errors|length }}</strong> 項</span></div>
+{% if preview.errors %}<div class="notice error"><strong>尚未匯入，請修正檔案後重新上傳。</strong><ul>{% for error in preview.errors %}<li>{{ error }}</li>{% endfor %}</ul></div>{% else %}<p class="notice">以下資料尚未寫入名冊。預覽有效 15 分鐘。</p>{% endif %}
+<div class="table-scroll"><table><thead><tr><th>attendee_id</th><th>姓名</th><th>單位</th><th>桌次</th></tr></thead><tbody>{% for row in preview.rows %}<tr><td>{{ row.attendee_id }}</td><td>{{ row.name }}</td><td>{{ row.affiliation }}</td><td>{{ row.table_no }}</td></tr>{% endfor %}</tbody></table></div>
+{% if not preview.errors %}<form method="post" action="{{ url_for('web.import_confirm') }}" class="top-space"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="preview_id" value="{{ preview.id }}"><button class="primary" type="submit">確認匯入 {{ preview.rows|length }} 筆</button></form>{% endif %}</section>{% endif %}
+{% endblock %}

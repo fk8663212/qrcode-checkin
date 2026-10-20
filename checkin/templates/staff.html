@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block scripts %}
+<script defer src="{{ url_for('static', filename='vendor/html5-qrcode-2.3.8.min.js') }}"></script>
+<script defer src="{{ url_for('static', filename='staff.js') }}"></script>
+{% endblock %}
+{% block container_class %}staff-layout{% endblock %}
+{% block content %}
+<section class="page-heading"><p class="eyebrow">WELCOME DESK</p><h1>現場報到</h1><p class="muted">掃描票券 → 核對來賓 → 確認報到</p></section>
+<noscript><p class="notice error">報到頁需要 JavaScript，請啟用後重新整理，或使用另一個瀏覽器並洽現場管理員協助。</p></noscript>
+<div class="staff-grid">
+<section class="card scanner-card"><div class="section-heading"><h2>掃描 QR Code</h2><span class="badge">後鏡頭</span></div>
+  <div id="reader" class="reader" data-ticket-base-url="{{ ticket_base_url }}"><p class="muted camera-placeholder">點下方按鈕開啟相機</p></div>
+  <div class="actions"><button id="start-camera" class="primary" type="button" disabled>開啟後鏡頭</button><button id="stop-camera" type="button" hidden>關閉相機</button></div>
+  <p class="small muted">相機需要 HTTPS 或電腦本機 localhost，並需允許瀏覽器存取。無法開啟時，請使用下方搜尋或貼上票券連結。</p>
+  <details><summary>貼上票券連結</summary><form id="token-form" class="stack"><label>票券連結或憑證<input id="ticket-input" autocomplete="off" spellcheck="false" autocapitalize="none" maxlength="2048" required></label><button type="submit" disabled>讀取並核對</button></form></details>
+</section>
+<section class="card"><h2>人工搜尋備援</h2><form id="search-form" class="search-bar"><label class="grow"><span class="sr-only">姓名或編號</span><input id="search-input" placeholder="輸入姓名或參加者編號" maxlength="100" required autocomplete="off"></label><button type="submit" disabled>搜尋</button></form><p class="muted small">同名來賓請核對參加者編號、單位及桌次。</p><div id="search-results" class="stack" aria-live="polite"></div></section>
+</div>
+<div id="staff-message" role="status" aria-live="polite" hidden></div>
+<section id="confirmation" class="card confirmation" hidden aria-live="polite">
+  <p id="result-label" class="eyebrow">請核對來賓</p><h2 id="result-name" class="guest-name"></h2>
+  <dl class="guest-details"><div><dt>參加者編號</dt><dd id="result-id"></dd></div><div><dt>單位／系所</dt><dd id="result-affiliation"></dd></div><div><dt>桌次</dt><dd id="result-table" class="table-number"></dd></div><div><dt>目前狀態</dt><dd id="result-status"></dd></div></dl>
+  <p id="result-history" class="muted"></p>
+  <button id="confirm-checkin" class="primary full" type="button">確認報到</button>
+  <button id="next-guest" class="full" type="button">繼續下一位</button>
+</section>
+{% endblock %}

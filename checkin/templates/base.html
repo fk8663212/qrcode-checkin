@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <meta name="theme-color" content="#101210">
+  <title>{% block title %}{{ event_name }} · 電子報到{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <script defer src="{{ url_for('static', filename='common.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('web.index') }}"><span class="brand-mark" aria-hidden="true">✦</span><span>{{ event_name }}<small>DINNER · CHECK IN</small></span></a>
+    {% if g.user %}<div class="account"><span>{{ g.user.username }}</span><form method="post" action="{{ url_for('web.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="quiet" type="submit">登出</button></form></div>{% endif %}
+  </header>
+  {% if is_demo %}<div class="demo-banner">示範環境 · 僅含虛構來賓，與正式資料分開</div>{% endif %}
+  {% if g.user %}<nav class="nav" aria-label="主要導覽"><a href="{{ url_for('web.staff') }}">現場報到</a>{% if g.user.role == 'admin' %}<a href="{{ url_for('web.admin') }}">管理總覽</a><a href="{{ url_for('web.import_csv') }}">匯入名冊</a><a href="{{ url_for('web.users') }}">工作人員</a>{% endif %}</nav>{% endif %}
+  <main class="container {% block container_class %}{% endblock %}">
+    {% for category, message in get_flashed_messages(with_categories=true) %}<div class="notice {{ category }}" role="status">{{ message }}</div>{% endfor %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer>晚宴電子報到 <span>·</span> 時間皆為台北時間 UTC+8</footer>
+</body>
+</html>

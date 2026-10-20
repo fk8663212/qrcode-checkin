@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block scripts %}<script defer src="{{ url_for('static', filename='ticket.js') }}"></script>{% endblock %}
+{% block container_class %}narrow{% endblock %}
+{% block content %}
+<section class="hero compact"><p class="eyebrow">YOUR INVITATION</p><h1>個人電子票券</h1></section>
+<p id="ticket-message" class="notice" role="status">正在讀取票券…</p>
+<article id="ticket-card" class="card ticket" hidden>
+  <div class="ticket-heading"><span class="eyebrow">{{ event_name }}</span><span id="ticket-status" class="badge">待報到</span></div>
+  <h2 id="ticket-name" class="guest-name"></h2><p id="ticket-affiliation" class="muted"></p>
+  <div class="table-label">您的桌次<strong id="ticket-table"></strong></div>
+  <div class="qr-wrap"><img id="ticket-qr" alt="個人報到 QR Code" width="280" height="280"></div>
+  <p class="small muted">請在入口出示此 QR Code，由工作人員核對並確認。</p>
+  <p id="ticket-time" class="success-text"></p>
+  <button type="button" id="refresh-ticket" class="full">更新報到狀態</button>
+</article>
+<div class="ticket-note small muted">此票券僅供本人使用，請妥善保管，避免轉傳。<br>開啟票券與自行掃碼都不會自動報到。</div>
+<button type="button" id="retry-ticket" class="full" hidden>重新讀取票券</button>
+{% endblock %}

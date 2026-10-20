@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block container_class %}narrow{% endblock %}
+{% block content %}
+<section class="hero compact"><p class="eyebrow">EVENT TEAM</p><h1>工作人員登入</h1><p class="muted">請使用自己的帳號，報到操作會留下紀錄。</p></section>
+<form method="post" class="card stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>帳號<input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="40" required autofocus></label>
+  <label>密碼<input type="password" name="password" autocomplete="current-password" maxlength="128" required></label>
+  <button class="primary full" type="submit">登入</button>
+  <p class="muted small">忘記密碼或帳號被停用，請聯絡活動管理員。</p>
+</form>
+{% endblock %}

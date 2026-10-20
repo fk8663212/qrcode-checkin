@@ -1,0 +1,13 @@
+bind = '0.0.0.0:8000'
+workers = 2
+threads = 4
+worker_class = 'gthread'
+timeout = 30
+graceful_timeout = 30
+preload_app = True
+umask = 0o077
+accesslog = '-'
+# U = URL path only; never use r (request line) or q (query string).
+access_log_format = '%(h)s %(m)s %(U)s %(s)s %(L)s'
+errorlog = '-'
+capture_output = False
