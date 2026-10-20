@@ -7,6 +7,13 @@ services:
     environment:
       CHECKIN_ENV: production
       EVENT_NAME: ${EVENT_NAME:-導生晚宴}
+      EVENT_STARTS_AT: ${EVENT_STARTS_AT:-}
+      EVENT_LOCATION: ${EVENT_LOCATION:-}
+      EVENT_ORGANIZER: ${EVENT_ORGANIZER:-}
+      EVENT_CONTACT: ${EVENT_CONTACT:-}
+      EVENT_NOTICE: ${EVENT_NOTICE:-}
+      INITIAL_ADMIN_USERNAME: ${INITIAL_ADMIN_USERNAME:-}
+      INITIAL_ADMIN_PASSWORD_HASH: ${INITIAL_ADMIN_PASSWORD_HASH:-}
       PUBLIC_BASE_URL: https://${DOMAIN:?Set DOMAIN in .env}
       SECRET_KEY: ${SECRET_KEY:?Set a random SECRET_KEY in .env}
       DATABASE_PATH: /data/checkin.sqlite3

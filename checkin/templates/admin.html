@@ -2,7 +2,34 @@
 {% block content %}
 <div class="page-heading heading-row"><div><p class="eyebrow">EVENT OVERVIEW</p><h1>晚宴管理總覽</h1><p class="muted">即時名冊與報到狀態 · 最多 200 人</p></div><div class="actions"><a class="button" href="{{ url_for('web.import_csv') }}">匯入 CSV</a><a class="button primary" href="{{ url_for('web.attendee_new') }}">＋ 新增臨時來賓</a></div></div>
 <div class="stats"><div class="card stat"><span>總人數</span><strong>{{ stats.total }}</strong><small>活動名冊</small></div><a class="card stat" href="{{ url_for('web.admin', status='checked') }}"><span>已報到</span><strong class="success-text">{{ stats.checked }}</strong><small>查看已報到名單 →</small></a><a class="card stat" href="{{ url_for('web.admin', status='pending') }}"><span>未報到</span><strong>{{ stats.total - stats.checked }}</strong><small>查看未報到名單 →</small></a></div>
-<section class="card"><div class="section-heading"><h2>各桌報到人數</h2><a class="small" href="{{ url_for('web.admin') }}">重新整理</a></div><div class="table-stats">{% for table in tables %}<div class="table-chip"><span>{{ table.table_no or '未安排桌次' }}</span><strong>{{ table.checked }} <small>/ {{ table.total }}</small></strong></div>{% else %}<p class="muted">匯入名冊後將顯示各桌人數。</p>{% endfor %}</div></section>
+<section class="card table-overview" aria-labelledby="table-overview-title">
+  <div class="section-heading">
+    <h2 id="table-overview-title">現場桌次概況</h2>
+    <div class="table-overview-actions">
+      {% if is_demo %}<span class="badge table-demo-label">示範資料</span>{% endif %}
+      <a class="small" href="{{ url_for('web.admin', q=query, status=status) }}">重新整理</a>
+    </div>
+  </div>
+  <div class="table-stats">
+    {% for table in tables %}
+      {% set label = table.table_no or '未安排桌次' %}
+      {% if table.table_no and not table.table_no.endswith('桌') %}{% set label = label ~ ' 桌' %}{% endif %}
+      {% set complete = table.table_no and table.checked == table.total and table.total > 0 %}
+      <div class="table-attendance-card{% if complete %} is-complete{% endif %}" role="group" aria-labelledby="table-title-{{ loop.index }}" data-table-no="{{ table.table_no }}">
+        <h3 id="table-title-{{ loop.index }}">{{ label }}</h3>
+        <p class="table-attendance-count"><span class="sr-only">已報到 </span>{{ table.checked }}<span aria-hidden="true">/</span><span class="sr-only"> 人，共 </span>{{ table.total }}<span class="sr-only"> 人</span></p>
+        <progress class="table-attendance-progress" value="{{ table.checked }}" max="{{ table.total }}" aria-label="{{ label }}報到進度">{{ ((table.checked / table.total * 100) if table.total else 0)|round|int }}%</progress>
+        {% if complete %}<span class="sr-only">本桌已到齊</span>{% endif %}
+      </div>
+    {% else %}
+      <p class="muted table-overview-empty">匯入名冊後將顯示各桌人數。</p>
+    {% endfor %}
+  </div>
+  <div class="table-overview-summary">
+    <p>已到場 <span>{{ stats.checked }} / {{ stats.total }}</span></p>
+    <strong aria-label="整體報到率">{{ ((stats.checked / stats.total * 100) if stats.total else 0)|round|int }}%</strong>
+  </div>
+</section>
 <section class="card"><div class="section-heading"><h2>參加者名冊</h2><span class="small muted">目前顯示 {{ rows|length }} 人</span></div>
 <form method="get" class="search-bar wrap"><label class="grow"><span class="sr-only">搜尋</span><input name="q" placeholder="搜尋姓名、編號、單位" value="{{ query }}" maxlength="100"></label><label><span class="sr-only">報到狀態</span><select name="status"><option value="all" {% if status == 'all' %}selected{% endif %}>全部狀態</option><option value="checked" {% if status == 'checked' %}selected{% endif %}>已報到</option><option value="pending" {% if status == 'pending' %}selected{% endif %}>未報到</option></select></label><button type="submit">查詢</button></form>
 <div class="table-scroll"><table><thead><tr><th>編號／姓名</th><th>單位</th><th>桌次</th><th>報到狀態</th><th>操作</th></tr></thead><tbody>{% for row in rows %}<tr><td><small class="muted">{{ row.attendee_id }}</small><br><strong>{{ row.name }}</strong></td><td>{{ row.affiliation or '—' }}</td><td>{{ row.table_no or '待安排' }}</td><td><span class="badge {{ 'success' if row.checked_at else '' }}">{{ '已報到' if row.checked_at else '未報到' }}</span>{% if row.checked_at %}<small class="block muted">{{ row.checked_at|taipei }}<br>{{ row.operator_name }}</small>{% endif %}</td><td><a href="{{ url_for('web.attendee_detail', pk=row.id) }}">管理票券 →</a></td></tr>{% else %}<tr><td colspan="5" class="muted">沒有符合的來賓。可匯入名冊或新增臨時來賓。</td></tr>{% endfor %}</tbody></table></div></section>

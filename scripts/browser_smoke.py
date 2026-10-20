@@ -31,13 +31,17 @@ def main():
     with tempfile.TemporaryDirectory(prefix='qrcode-browser-') as temp:
         app = create_app({'TESTING': True, 'CHECKIN_ENV': 'test', 'SECRET_KEY': 'test-browser-secret-000000000000000000',
                           'DATABASE': str(Path(temp) / 'browser.sqlite3'), 'PUBLIC_BASE_URL': 'http://127.0.0.1',
+                          'EVENT_NAME': '校友交流活動', 'EVENT_STARTS_AT': '2026-11-20 18:00',
+                          'EVENT_LOCATION': '第一會館', 'EVENT_ORGANIZER': '測試主辦單位',
+                          'EVENT_CONTACT': 'host@example.org', 'EVENT_NOTICE': '請出示本人的電子票券。',
                           'SESSION_COOKIE_SECURE': False})
         with app.app_context(), transaction() as db:
             hashed = hash_password('browser-test-password')
             for name, role in [('browser-admin', 'admin'), ('browser-staff', 'staff')]:
                 db.execute('INSERT INTO users(username,password_hash,role,created_at) VALUES (?,?,?,?)', (name, hashed, role, now()))
             for index in range(1, 12):
-                insert_attendee(db, {'attendee_id': f'B{index:03}', 'name': f'測試來賓 {index:02}', 'affiliation': '資訊工程學系', 'table_no': f'{index:02}'})
+                table_no = '01' if index <= 3 else '02' if index <= 8 else '03' if index <= 10 else ''
+                insert_attendee(db, {'attendee_id': f'B{index:03}', 'name': f'測試來賓 {index:02}', 'affiliation': '資訊工程學系', 'table_no': table_no})
             tokens = {row['attendee_pk']: row['token'] for row in db.execute('SELECT * FROM tickets')}
         server = make_server('127.0.0.1', 0, app, threaded=True, request_handler=QuietHandler)
         base = f'http://127.0.0.1:{server.server_port}'
@@ -143,9 +147,16 @@ def main():
                     public = public_context.new_page()
                     urls = []
                     public.on('request', lambda request: urls.append(request.url))
+                    public.goto(base + '/')
+                    expect(public.get_by_role('heading', name='歡迎蒞臨 校友交流活動')).to_be_visible()
+                    expect(public.get_by_label('活動資訊')).to_contain_text('第一會館')
+                    assert public.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+                    public.screenshot(path=str(output / f'{browser_name}-event-home.png'), full_page=True)
                     public.goto(base + '/ticket#' + tokens[offset + 1])
                     expect(public.locator('#ticket-name')).to_have_text(f'測試來賓 {offset+1:02}')
                     expect(public.locator('#ticket-status')).to_have_text('已報到')
+                    expect(public.get_by_label('活動資訊')).to_contain_text('2026/11/20 18:00:00')
+                    expect(public.get_by_label('活動資訊')).to_contain_text('請出示本人的電子票券。')
                     assert all(tokens[offset + 1] not in url for url in urls)
                     assert public.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
                     public.screenshot(path=str(output / f'{browser_name}-ticket.png'), full_page=True)
@@ -156,13 +167,31 @@ def main():
 
                     admin = context.new_page()
                     login(admin, admin=True)
+                    overview = admin.get_by_role('region', name='現場桌次概況')
+                    expect(overview.locator('.table-attendance-card')).to_have_count(4)
+                    for table_no, total in [('01', 3), ('02', 5), ('03', 2), ('', 1)]:
+                        card = overview.locator(f'[data-table-no="{table_no}"]')
+                        assert card.locator('progress').evaluate('(p) => p.max') == total
+                        positions = card.evaluate('''(card) => {
+                            const label = card.querySelector('h3').getBoundingClientRect();
+                            const count = card.querySelector('.table-attendance-count').getBoundingClientRect();
+                            return {separated: count.top >= label.bottom};
+                        }''')
+                        assert positions['separated'], 'Table label and attendance count overlap'
+                    expect(overview.locator('[data-table-no="01"]')).to_have_class('table-attendance-card is-complete')
+                    assert len(admin.locator('link[rel="stylesheet"]').get_attribute('href').split('?')) == 2
+                    overview.screenshot(path=str(output / f'{browser_name}-uneven-tables-mobile.png'))
                     admin.screenshot(path=str(output / f'{browser_name}-admin.png'), full_page=True)
                     assert admin.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+                    admin.set_viewport_size({'width': 1522, 'height': 1000})
+                    overview.screenshot(path=str(output / f'{browser_name}-uneven-tables-desktop.png'))
                     assert not errors, errors
                     results.append({'browser': browser_name, 'device_emulation': device_name,
                                     'manual_checkin': 'PASS', 'duplicate': 'PASS', 'camera_denied': 'PASS',
                                     'network_before_commit': 'PASS', 'lost_response_retry': 'PASS',
                                     'ticket_and_no_token_in_url': 'PASS', 'mobile_layout': 'PASS',
+                                    'configured_event_information': 'PASS',
+                                    'uneven_table_denominators_and_separate_labels': 'PASS',
                                     'javascript_errors': errors})
                     context.close()
                     browser.close()

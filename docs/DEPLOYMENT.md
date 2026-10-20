@@ -13,18 +13,19 @@
 
 ## 設定與啟動
 
+建議在新的部署目錄先使用事前設定工具，設定活動資料及初始管理員。需有 Python 3.9 以上與 venv（建議 3.12 以上）：
+
 ```sh
-cp deploy/production.env.example .env
-chmod 600 .env
-python3 -c 'import secrets; print(secrets.token_hex(32))'
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m checkin.setup_event --target docker
 ```
 
-將隨機值填入 `.env` 的 `SECRET_KEY`，設定 `DOMAIN`、`ACME_EMAIL`、`EVENT_NAME`。不要將金鑰貼到聊天、issue 或版本庫。不要填 `https://` 在 DOMAIN 中，也不要填子路徑。
+依提示填入活動名稱、選填活動資訊、網域、HTTPS 憑證聯絡 Email 與管理員帳密。工具產生私有 `.env`、隨機 `SECRET_KEY` 和初始管理員密碼雜湊，服務首次啟動時才建立帳號；不在檔案或輸出保存明文密碼。完整參數與後續調整見 [事前設定](PRE_EVENT_SETUP.md)。工具拒絕覆寫已有 `.env`，既有部署可繼續沿用原設定，不會重設帳密。
 
 ```sh
 docker compose config --quiet
 docker compose build
-docker compose run --rm app python -m flask --app wsgi create-admin
 docker compose up -d
 docker compose ps
 docker compose logs --tail 50 app proxy
@@ -32,7 +33,9 @@ docker compose logs --tail 50 app proxy
 
 Caddy 會在 DNS 和 80／443 可用時申請／續期 HTTPS 憑證；應用程式只透過專用 Docker 網路提供給代理。[Caddy 反向代理文件](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
 
-確認 `https://你的網域/healthz` 回 `{"status":"ok"}`；再登入 `/login`，匯入自己的 CSV、建立每人獨立員工帳號、測試票券，完成 [實機清單](ACCEPTANCE.md) 才發送正式票。正式環境沒有預設帳號、示範資料或自動產生管理員。
+確認 `https://你的網域/healthz` 回 `{"status":"ok"}`；再用事前設定的帳密登入 `/login`，匯入自己的 CSV、建立每人獨立員工帳號、測試票券，完成 [實機清單](ACCEPTANCE.md) 才發送正式票。正式環境沒有預設密碼或示範資料；只有明確設定初始管理員參數、且資料庫尚無帳號時才建立管理員，後續啟動不覆寫。
+
+若採手動設定，可複製 `deploy/production.env.example` 到 `.env`，自行產生隨機 `SECRET_KEY`、填入 `DOMAIN` 與 `ACME_EMAIL`，將兩個 `INITIAL_ADMIN_*` 留空；建置後用 `docker compose run --rm app python -m flask --app wsgi create-admin` 互動建立管理員，再啟動服務。兩種方式擇一即可。請勿將 `.env` 或金鑰貼到聊天、issue 或版本庫。
 
 應用程式以 UID/GID 10001 執行，根檔案系統唯讀，只有 `/data` 卷及暫存空間可寫。若改用 bind mount，需自行讓目錄擁有者為 10001:10001 且權限 700；不要用 777。預設 named volume 第一次建立時繼承映像 `/data` 的擁有者。
 

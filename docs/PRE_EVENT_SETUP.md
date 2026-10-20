@@ -1,0 +1,69 @@
+# 單一活動事前設定
+
+目前採「一份部署對應一場活動」。首次設定工具會產生私有 `.env`，服務首次啟動時在空白帳號資料庫建立初始管理員。工具本身不啟動服務、不連線 VPS、不改動名冊及報到紀錄。
+
+## 本機設定
+
+在新的專案部署目錄安裝依賴後執行：
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m checkin.setup_event --target local
+```
+
+依序設定活動名稱、活動時間、地點、主辦單位、聯絡方式、票券提醒、公開網址及初始管理員帳密。時間以 Asia/Taipei 解讀，格式為 `YYYY-MM-DD HH:MM`，例如 `2026-11-20 18:00`；選填項目按 Enter 即可略過。
+
+密碼遮罩輸入並再次確認，需 12–128 字。工具只保存 PBKDF2 密碼雜湊，並自動產生隨機 session 金鑰；不會印出密碼、雜湊或金鑰。輸出檔權限為 600，請勿公開或提交版本庫。
+
+```sh
+FLASK_SKIP_DOTENV=1 .venv/bin/python -m flask --app wsgi run --host 127.0.0.1 --port 5000
+```
+
+從 `/login` 以剛才設定的帳密登入，即可匯入 CSV、設定工作人員及發送票券。公開網址決定票券連結與 QR 的網址；請配合實際監聽的埠及反向代理設定。要讓內網手機存取，本機服務需監聽 `0.0.0.0` 並使用電腦的內網 IP；手機鏡頭仍需要受信任的 HTTPS。
+
+啟動指令讓應用程式自行讀取 `.env`，保留設定中的 `$` 等字元；`FLASK_SKIP_DOTENV=1` 不會略過本專案自己的設定載入。
+
+## 正式 Docker 設定
+
+在新的部署目錄安裝上述依賴後執行：
+
+```sh
+.venv/bin/python -m checkin.setup_event --target docker
+docker compose config --quiet
+docker compose build
+docker compose up -d
+```
+
+Docker 模式會額外詢問網域與 HTTPS 憑證聯絡 Email，產生正式 HTTPS 公開網址；SQLite 固定使用資料卷內的 `/data/checkin.sqlite3`。初始管理員由服務首次啟動建立，使用者輸入的密碼已雜湊才存入設定檔。DNS、防火牆、Docker 與 HTTPS 的前置要求見 [部署文件](DEPLOYMENT.md)，本工具不自動操作這些外部服務。
+
+請依執行方式選擇 local 或 docker，兩者輸出各自適用的環境檔跳脫格式。Docker 版的引號、反斜線及 `$` 文字依 [Compose 的環境檔規則](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/#env-file-syntax) 處理。
+
+## 參數與顯示
+
+| 參數 | 用途 |
+| --- | --- |
+| `EVENT_NAME` | 必填，活動名稱，最多 100 字 |
+| `EVENT_STARTS_AT` | 選填，活動時間；畫面使用台北時間 |
+| `EVENT_LOCATION` | 選填，地點，最多 200 字 |
+| `EVENT_ORGANIZER` | 選填，主辦單位，最多 100 字 |
+| `EVENT_CONTACT` | 選填，聯絡方式，最多 200 字；作為文字顯示，不自動發送訊息 |
+| `EVENT_NOTICE` | 選填，票券提醒，最多 500 字 |
+| `PUBLIC_BASE_URL` | 票券使用的網域根網址；正式環境需 HTTPS |
+| `INITIAL_ADMIN_USERNAME` | 首次建立的管理員帳號 |
+| `INITIAL_ADMIN_PASSWORD_HASH` | 工具產生的初始密碼雜湊，不可填明文 |
+| `SECRET_KEY` | 工具自動產生的私有 session 簽章金鑰 |
+
+活動資訊會顯示於首頁與個人票券；空白項目隱藏。活動時間目前僅供顯示，不會自動開始、結束或限制報到，也不會建立其他場次。
+
+## 既有活動與後續修改
+
+- 工具拒絕覆寫既有設定檔；如需先草擬，可使用 `--output /私人路徑/event.env`，核對後才在新的部署中使用。自訂檔不會自動套用到執行中的服務。
+- 初始帳密只在資料庫完全沒有帳號時使用；既有帳號、密碼、名冊、票券及歷史不會被啟動流程覆寫。示範模式會忽略初始管理員參數，沿用自己的示範帳號。
+- 已有正式帳號的部署可繼續使用原本的 `create-admin`，不需要新增初始參數。密碼變更使用 `reset-password`，重啟後仍保留新密碼。
+- 初次建立管理員後，可移除 `.env` 的兩個 `INITIAL_ADMIN_*` 值；它們不會再次套用到既有帳號。
+- 活動名稱、地點與提醒等文字可在 `.env` 調整後重啟套用。金鑰變更會使既有登入失效；網址變更會影響已發出的票券連結，請先備份並重新核對發送方式。
+- 下一個活動使用新的部署資料與金鑰，先將舊活動完整備份及保存報表。不要藉由改名或清空舊名冊來切換活動。
+- Docker 範本的專案名固定為 `qrcode-checkin`；只複製資料夾仍可能連到原本資料卷。日後另開活動時，需先規劃獨立 Compose 專案名及資料卷；同一活動的日常重啟則維持原名。多份範本同時執行也須另外處理 80／443 的代理入口。
+
+多活動管理構想已記錄在 [後續規劃](FUTURE_MULTI_EVENT.md)，待目前活動結束後再評估。

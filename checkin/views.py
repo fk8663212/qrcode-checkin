@@ -158,7 +158,7 @@ def admin():
                                FROM attendees a LEFT JOIN checkins c ON c.attendee_pk=a.id AND c.undone_at IS NULL''').fetchone()
     tables = get_db().execute('''SELECT a.table_no, COUNT(*) AS total, COUNT(c.id) AS checked
                                 FROM attendees a LEFT JOIN checkins c ON c.attendee_pk=a.id AND c.undone_at IS NULL
-                                GROUP BY a.table_no ORDER BY a.table_no''').fetchall()
+                                GROUP BY a.table_no ORDER BY a.table_no='', a.table_no''').fetchall()
     return render_template('admin.html', rows=rows, stats=stats, tables=tables, query=query, status=status)
 
 

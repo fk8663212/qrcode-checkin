@@ -1,6 +1,9 @@
 .venv/
 .env
 .env.demo
+.env.*
+!.env.example
+*.env
 __pycache__/
 .pytest_cache/
 instance/

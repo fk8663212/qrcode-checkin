@@ -11,6 +11,7 @@
   <div class="qr-wrap"><img id="ticket-qr" alt="個人報到 QR Code" width="280" height="280"></div>
   <p class="small muted">請在入口出示此 QR Code，由工作人員核對並確認。</p>
   <p id="ticket-time" class="success-text"></p>
+  {% include 'event_details.html' %}
   <button type="button" id="refresh-ticket" class="full">更新報到狀態</button>
 </article>
 <div class="ticket-note small muted">此票券僅供本人使用，請妥善保管，避免轉傳。<br>開啟票券與自行掃碼都不會自動報到。</div>

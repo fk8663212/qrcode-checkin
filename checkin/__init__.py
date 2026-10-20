@@ -12,12 +12,13 @@ from werkzeug.exceptions import HTTPException, SecurityError
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .db import init_db
+from .event_settings import event_info, validate_event_settings
 
 
 def create_app(test_config=None):
     root = Path(__file__).resolve().parent.parent
     if test_config is None:
-        load_dotenv(root / '.env')
+        load_dotenv(root / '.env', interpolate=False)
     app = Flask(__name__, instance_path=str(root / 'instance'))
     mode = os.getenv('CHECKIN_ENV', 'development')
     instance = Path(app.instance_path)
@@ -26,6 +27,11 @@ def create_app(test_config=None):
         CHECKIN_ENV=mode,
         DATABASE=os.getenv('DATABASE_PATH', str(instance / ('demo.sqlite3' if mode == 'demo' else 'checkin.sqlite3'))),
         SECRET_KEY=os.getenv('SECRET_KEY'), EVENT_NAME=os.getenv('EVENT_NAME', '導生晚宴'),
+        EVENT_STARTS_AT=os.getenv('EVENT_STARTS_AT', ''), EVENT_LOCATION=os.getenv('EVENT_LOCATION', ''),
+        EVENT_ORGANIZER=os.getenv('EVENT_ORGANIZER', ''), EVENT_CONTACT=os.getenv('EVENT_CONTACT', ''),
+        EVENT_NOTICE=os.getenv('EVENT_NOTICE', ''),
+        INITIAL_ADMIN_USERNAME=os.getenv('INITIAL_ADMIN_USERNAME', ''),
+        INITIAL_ADMIN_PASSWORD_HASH=os.getenv('INITIAL_ADMIN_PASSWORD_HASH', ''),
         PUBLIC_BASE_URL=os.getenv('PUBLIC_BASE_URL', 'http://127.0.0.1:5000').rstrip('/'),
         SESSION_COOKIE_NAME='dinner_checkin_demo' if mode == 'demo' else 'dinner_checkin', SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Lax', SESSION_COOKIE_SECURE=mode == 'production',
@@ -35,6 +41,14 @@ def create_app(test_config=None):
     )
     if test_config:
         app.config.update(test_config)
+    if app.config['TEMPLATES_AUTO_RELOAD'] is None:
+        # Local editing must not combine cached old HTML with new CSS files.
+        # This reloads templates without enabling Flask's debugger or reloader.
+        app.config['TEMPLATES_AUTO_RELOAD'] = app.config['CHECKIN_ENV'] in ('development', 'demo', 'test')
+    try:
+        validate_event_settings(app.config)
+    except ValueError as error:
+        raise RuntimeError(str(error)) from None
     base = urlsplit(app.config['PUBLIC_BASE_URL'])
     if (base.scheme not in ('http', 'https') or not base.netloc or base.path not in ('', '/')
             or base.query or base.fragment or base.username or base.password):
@@ -66,6 +80,8 @@ def create_app(test_config=None):
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
     init_db(app)
     os.chmod(db_path, 0o600)
+    from .bootstrap import initialize_admin
+    initialize_admin(app)
 
     from .security import install_security
     from .views import bp
@@ -74,9 +90,24 @@ def create_app(test_config=None):
     app.register_blueprint(bp)
     register_cli(app)
 
+    @app.url_defaults
+    def version_static_asset(endpoint, values):
+        if endpoint != 'static' or 'filename' not in values or 'v' in values:
+            return
+        try:
+            static_root = Path(app.static_folder).resolve()
+            asset = (static_root / values['filename']).resolve()
+            if not asset.is_relative_to(static_root) or not asset.is_file():
+                return
+            metadata = asset.stat()
+        except (OSError, TypeError, ValueError):
+            return
+        values['v'] = f'{metadata.st_mtime_ns:x}-{metadata.st_size:x}'
+
     @app.context_processor
     def shared():
-        return {'event_name': app.config['EVENT_NAME'], 'is_demo': app.config['CHECKIN_ENV'] == 'demo'}
+        return {'event_name': app.config['EVENT_NAME'], 'event_info': event_info(app.config),
+                'is_demo': app.config['CHECKIN_ENV'] == 'demo'}
 
     @app.template_filter('taipei')
     def taipei(value):

@@ -4,6 +4,8 @@
 
 本專案不讀寫其他專案。名冊與帳號保存在私有 `instance/`；正式 Docker 版存於獨立資料卷。
 
+目前採 **一份部署對應一場活動**，透過事前設定調整活動資訊與初始管理員。多活動清單、活動資料隔離及類型／主題設定已記錄於 [後續規劃](docs/FUTURE_MULTI_EVENT.md)，待目前活動結束後再評估；現行範圍見 [架構決定](docs/adr/0001-single-event-deployment.md)。
+
 ## 1. 本機啟動
 
 建議 Python 3.12 以上。既有 macOS Python 3.9 可用於本機展示；正式部署固定使用 Docker Python 3.12，不以舊 Python 上線。
@@ -48,13 +50,15 @@ DEMO_HOST=0.0.0.0 DEMO_PUBLIC_BASE_URL=http://192.168.1.100:5001 sh scripts/run_
 ### 自己的活動與正式名冊（本機）
 
 ```sh
-cp .env.example .env
-# 編輯 .env 的 EVENT_NAME、PUBLIC_BASE_URL；本機保留 CHECKIN_ENV=development。
-.venv/bin/python -m flask --app wsgi create-admin
-.venv/bin/python -m flask --app wsgi run --host 127.0.0.1 --port 5000
+.venv/bin/python -m checkin.setup_event --target local
+FLASK_SKIP_DOTENV=1 .venv/bin/python -m flask --app wsgi run --host 127.0.0.1 --port 5000
 ```
 
-管理員帳號與密碼由互動提示輸入，無預設正式密碼。帳號需 3–40 位英數或 `_ . -`，密碼需 12–128 字。忘記密碼可在主機執行：
+事前設定會詢問活動名稱、時間、地點、主辦單位、聯絡方式、票券提醒、公開網址及初始管理員帳密，產生權限 600 的 `.env`。密碼遮罩輸入並只存雜湊，session 金鑰隨機產生；服務首次啟動時在空白帳號資料庫建立管理員。首頁與票券會顯示填寫的活動資訊，空白項目隱藏。詳細流程見 [事前設定文件](docs/PRE_EVENT_SETUP.md)。
+
+設定工具不覆寫既有 `.env`；可用 `--output /私人路徑/event.env` 草擬，再於新部署核對使用。既有帳號、名冊、票券及報到不會被初始化流程覆寫，示範資料保持獨立。已有正式部署可繼續使用 `.env.example` 手動設定與 `create-admin`，不必重新初始化。
+
+管理員帳號需 3–40 位英數或 `_ . -`，密碼需 12–128 字。忘記密碼可在主機執行：
 
 ```sh
 .venv/bin/python -m flask --app wsgi reset-password your-admin-name
@@ -75,6 +79,8 @@ cp .env.example .env
 手機的相機需要有效 HTTPS；電腦的 localhost／127.0.0.1 可用於本機測試。手機連到區網 HTTP 位址時，請以人工搜尋測試流程，正式掃碼驗收須用 HTTPS。`PUBLIC_BASE_URL` 必須是參加者和工作人員都能連到的同一網域根網址，不能含子路徑或查詢。正式發票前設定好網址；換網域後需重新匯出並發送連結／QR。
 
 ## 2. 匯入、管理名冊
+
+可直接使用 [20 位虛構來賓範例 CSV](examples/attendees.csv) 測試匯入。檔案為 UTF-8，包含 4 桌、兩位同名來賓，以及一位尚未安排桌次的來賓；編號與示範資料庫一致，重匯會依編號更新。
 
 1. 管理員登入，開啟「匯入名冊」，上傳 UTF-8 CSV（可帶 BOM，1 MB 以下）。範例見 [examples/attendees.csv](examples/attendees.csv)。
 2. 檢查預覽、新增／更新人數與錯誤。任何錯誤都不會部分匯入，修正後重新上傳。
@@ -118,7 +124,7 @@ G003,陳小華,,
 
 ## 5. 管理、報表與稽核
 
-- 總覽顯示總人數、已報到、未報到與各桌人數；重新整理即可取得最新資料。
+- 總覽顯示總人數、已報到、未報到。「現場桌次概況」以卡片顯示各桌已報到／名冊人數及進度條，到齊桌次以綠色標示；底部顯示全場到場人數與比例，按「重新整理」取得最新資料。未安排桌次者另外顯示，也計入全場總數。分母依已匯入名冊的 `table_no` 分組計算各桌實際人數；更新 CSV 分組後，請重新匯入並確認，概況即以更新後名冊統計。
 - 可匯出票券連結、目前出席報表、各桌總數／已報到／未報到統計、完整歷次報到／撤回歷史、稽核紀錄。所有匯出只有管理員能操作，CSV 以 UTF-8 BOM 輸出，時間含台北時區。
 - 個人管理頁撤回報到需填原因、勾選確認；報到者、原時間、撤回者、原因與時間保留。可在重新核對後再報到，會另建歷史紀錄。
 - 停用／重設工作人員密碼立即使既有登入失效。歷史操作者名稱以快照保存，帳號不刪除。
@@ -171,6 +177,8 @@ G003,陳小華,,
 若自行設定 `PLAYWRIGHT_BROWSERS_PATH`，安裝和執行時必須使用同一個路徑。瀏覽器腳本產生手機尺寸截圖及 `test-results/browser-results.json`，其中資料為測試假資料。本機結果與限制見 [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md)。
 
 後端測試涵蓋 CSV 重匯／錯誤／容量、匿名與工作人員權限、CSRF、無效及撤銷票、10 個並行請求只寫一次、重試、補發、撤回、參加者資料隔離、帳號停用、限流、重啟保留、備份與還原。手機實機與 ARM Docker 執行驗收須另行完成。
+
+事前設定測試另涵蓋密碼遮罩、設定檔權限、不覆寫既有設定、初始管理員只建立一次、並行啟動、改密碼後重啟不還原舊密碼，以及活動資訊顯示與 HTML 跳脫。
 
 ## 9. 安全設定與維護
 
