@@ -5,6 +5,8 @@
   const card = document.getElementById('ticket-card');
   const retry = document.getElementById('retry-ticket');
   const refresh = document.getElementById('refresh-ticket');
+  const joinBingo = document.getElementById('join-bingo');
+  const bingoMessage = document.getElementById('bingo-message');
   // Keep the fragment for refresh/share. HTTP and Referrer headers never contain it.
   async function load() {
     refresh.disabled = true;
@@ -26,6 +28,11 @@
       status.textContent = data.checked_in ? '已報到' : '待報到';
       status.className = `badge ${data.checked_in ? 'success' : ''}`;
       document.getElementById('ticket-time').textContent = data.checked_at ? `報到時間：${Checkin.time(data.checked_at)}` : '';
+      if (joinBingo) {
+        joinBingo.hidden = !data.checked_in;
+        bingoMessage.className = 'small muted top-space';
+        bingoMessage.textContent = data.checked_in ? '主持人開放領卡後，點選上方按鈕即可領取或恢復同一張卡。' : '完成報到後，可使用這張電子票券領取賓果卡。';
+      }
       card.hidden = false; message.hidden = true;
     } catch (error) {
       card.hidden = true; // A stale QR must not remain visible after revocation or failed refresh.
@@ -35,6 +42,16 @@
     } finally { refresh.disabled = false; }
   }
   refresh.addEventListener('click', load);
+  if (joinBingo) joinBingo.addEventListener('click', async () => {
+    joinBingo.disabled = true;
+    try {
+      await Checkin.api('/api/bingo/claim', {token});
+      location.assign('/bingo');
+    } catch (error) {
+      bingoMessage.className = 'notice error top-space';
+      bingoMessage.textContent = error.status ? error.message : '網路中斷或逾時，領卡結果尚未確認。可安全重試，系統會恢復同一張卡。';
+    } finally { joinBingo.disabled = false; }
+  });
   retry.addEventListener('click', load);
   window.addEventListener('pageshow', event => { if (event.persisted) load(); });
   window.addEventListener('hashchange', () => location.reload());

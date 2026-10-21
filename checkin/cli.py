@@ -127,6 +127,9 @@ def register_cli(app):
             tables = {row[0] for row in source.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             if not {'attendees', 'tickets', 'checkins', 'users', 'audit_log', 'settings', 'import_previews', 'rate_limits'}.issubset(tables):
                 raise click.ClickException('來源不是完整的本系統資料庫。')
+            bingo_tables = {'bingo_games', 'bingo_cards', 'bingo_draws', 'bingo_winners'}
+            if tables & bingo_tables and not bingo_tables.issubset(tables):
+                raise click.ClickException('來源的賓果資料表不完整，請改用完整的一致性備份。')
             if source.execute('PRAGMA foreign_key_check').fetchone():
                 raise click.ClickException('來源資料庫關聯驗證失敗。')
             destination = connect(app.config['DATABASE'])
@@ -137,6 +140,7 @@ def register_cli(app):
                 raise click.ClickException('還原驗證失敗，請使用還原前備份。')
             # Invalidate every browser session carried in the backup.
             destination.execute('UPDATE users SET auth_version=auth_version+1')
+            destination.execute("INSERT INTO settings VALUES ('bingo_auth_version',1) ON CONFLICT(key) DO UPDATE SET value=value+1")
             audit(destination, None, 'database_restore', detail='CLI offline restore')
             destination.execute('PRAGMA wal_checkpoint(TRUNCATE)')
         finally:

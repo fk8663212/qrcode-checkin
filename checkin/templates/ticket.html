@@ -13,6 +13,10 @@
   <p id="ticket-time" class="success-text"></p>
   {% include 'event_details.html' %}
   <button type="button" id="refresh-ticket" class="full">更新報到狀態</button>
+  {% if config.get('BINGO_INTEGRATED') %}
+  <button type="button" id="join-bingo" class="primary full top-space" hidden>領取／開啟賓果卡</button>
+  <p id="bingo-message" class="small muted top-space" role="status">完成報到後，可使用這張電子票券領取賓果卡。</p>
+  {% endif %}
 </article>
 <div class="ticket-note small muted">此票券僅供本人使用，請妥善保管，避免轉傳。<br>開啟票券與自行掃碼都不會自動報到。</div>
 <button type="button" id="retry-ticket" class="full" hidden>重新讀取票券</button>

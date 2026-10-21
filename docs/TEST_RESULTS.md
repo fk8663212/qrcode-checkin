@@ -4,10 +4,10 @@
 
 ## 自動化後端
 
-`python -m pytest -q`：初版 66 項，事前設定完成後 87 項；加入桌次分組及模板／樣式更新回歸測試後，最新 **90 項通過，0 項失敗**。
+`python -m pytest -q`：報到與桌次修正為 90 項；加入賓果整合後最新 **114 項通過，0 項失敗**，另有 8 項 JavaScript 動畫測試通過。
 
-- macOS ARM64／Python 3.9.6／Flask 3.1.3／Pillow 11.3.0：前次完整 87 項通過，耗時 34.42 秒；本次新增 3 項測試另外通過，耗時 0.98 秒。
-- macOS ARM64／Python 3.14.7／Flask 3.1.3／Pillow 13.0.0：最新完整 90 項通過，耗時 14.26 秒。
+- macOS ARM64／Python 3.9.6／Flask 3.1.3／Pillow 11.3.0：完整 114 項通過，耗時 42.16 秒。
+- macOS ARM64／Python 3.14.7／Flask 3.1.3／Pillow 13.0.0：完整 114 項通過，耗時 18.11 秒。
 - 依賴一致性 `pip check`：兩個環境均無衝突。
 
 | 驗證範圍 | 結果 |
@@ -116,6 +116,30 @@
 - 重新啟動同一專案的 5000 活動服務與 5001 內網示範服務；健康檢查、公開登入頁與版本化樣式載入均通過。前後比對兩份資料庫中的帳號、名冊、票券及報到歷史，與 `.env` 檔案資訊均保留。
 
 可重現指令為 `python -m pytest -q tests/test_table_overview.py`。瀏覽器截圖為 `test-results/*-uneven-tables-desktop.png`、`*-uneven-tables-mobile.png`，僅含隔離測試資料；實體手機仍待驗收。
+
+## 2026-10-20：原票券與報到資格的賓果整合
+
+新增 24 項後端驗證，包含原卡規則、未報到／無效票拒絕領卡、8 個並行領卡請求只建一張卡、跨裝置恢復、關閉領卡後恢復、票券補發及舊 session 失效、撤回報到後失去操作及後續連線資格、公開狀態不洩漏名冊或他人卡片、工作人員無主持權限、CSRF、12 人同回合只取 10 位、先到回合優先、並行抽號、完整 49 號、下一局與歷史、重啟、備份還原、舊版備份升級及不完整賓果備份拒絕。兩個 Python 版本合計既有與新增 114 項全數通過。
+
+原專案動畫狀態測試保留於 `tests/bingo-animation.test.mjs`，8 項通過，包括重複通知、回應延遲、時間差、動畫中保存勾選、切局、減少動態效果及背景返回。
+
+整合後再次執行原 `scripts.browser_smoke`，Chromium／WebKit 的報到、重複票、兩種斷線重試、票券及各桌統計均通過，合成攝影機 QR 軟體解碼亦通過；沒有實體鏡頭參與。
+
+`python -m scripts.bingo_browser_smoke` 使用正常帳密登入與隔離資料庫，Chromium／WebKit 分別模擬 Pixel 7／iPhone 13：工作人員確認報到後原票券出現領卡按鈕、直接領卡、勾選與重整保存、跨裝置同卡、主持動畫暫停重抽、投影同步、正常管理表單補發、新票恢復原卡及既有 session 失效均通過；沒有 JavaScript 頁面錯誤，HTTP 網址未包含完整票券 token。玩家與投影截圖已實際檢視。結果為 `test-results/bingo-browser-results.json`，截圖為 `*-bingo-player.png`、`*-bingo-host-animation.png`、`*-bingo-display.png`。
+
+`python -m scripts.bingo_server_smoke` 實際啟動 Gunicorn 2 workers × 4 threads，共 200 位已報到虛構來賓、24 個並行 client 工作：
+
+- 同一 IP 完成 200 人領卡，無領卡限流阻擋，資料庫正好 200 張卡。
+- 10 個同時抽號請求：1 個成功、9 個拒絕舊進度，只開出 1 號。
+- 200 人查詢都讀到同一開獎進度及各自原卡；此機本輪查詢平均 14.95 ms、p95 25.54 ms。
+- 真正停止／重啟 Gunicorn 後，200 張卡及玩家登入保留。
+- 公開投影狀態沒有名冊或卡片資料，實際 Gunicorn 紀錄未包含完整 token。
+
+結果為 `test-results/bingo-server-results.json`。這是本機批次並行驗證，未代表現場 Wi-Fi、長時間負載或 Oracle ARM VPS 的效能。
+
+本機更新前，對 `instance/checkin.sqlite3`、`instance/demo.sqlite3` 各做 SQLite 一致性備份及完整性檢查，私有備份位於 `backups/before-bingo-20261020-171124-7f890b/`。更新 5000／5001 兩個本專案服務後，比對原帳號、名冊、票券、報到及名冊版本均保留，原設定與金鑰檔未變動。實際公開玩家／投影頁、QR 與主持權限保護正常；示範管理員正常登入可開啟新主持台。未替現行活動開放領卡或執行抽號。
+
+GitHub 與原本機賓果專案版本確認為 `e86191a0656881fa52030fa3a7aca33ead64293f`；本機原專案工作目錄仍乾淨，未修改或合併其資料庫。所有遊戲測試均在隔離資料進行。實體手機、投影設備及 VPS 上線待完成 [ACCEPTANCE.md](ACCEPTANCE.md)。
 
 ## 部署範本與尚未完成的驗收
 

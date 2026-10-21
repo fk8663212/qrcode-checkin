@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#10110f"><meta name="description" content="導生晚宴手機賓果，每人一張卡，一起等候幸運號碼。">
+  <title>{{ event_name }} · 賓果 · 我的卡片</title><link rel="icon" href="{{ url_for('static', filename='bingo/favicon.svg') }}" type="image/svg+xml"><link rel="stylesheet" href="{{ url_for('static', filename='bingo/style.css') }}"><link rel="stylesheet" href="{{ url_for('static', filename='bingo/draw-animation.css') }}">
+  <script type="module" src="{{ url_for('static', filename='bingo/app.js') }}"></script>
+<meta name="csrf-token" content="{{ csrf_token() }}"><meta name="robots" content="noindex,nofollow,noarchive"></head>
+<body data-page="player" data-ticket-base="{{ config.PUBLIC_BASE_URL }}">
+  <header class="topbar"><a class="brand" href="{{ url_for('web.index') }}"><span class="brand-mark">✦</span><span>{{ event_name }} · 賓果<small>DINNER BINGO</small></span></a><span class="connection" id="connection" role="status">連線中</span></header>
+  <main class="player-shell">
+    <div id="demo-banner" class="notice" hidden>本機示範活動 · 資料與正式活動分開</div>
+    <section class="page-intro"><p class="eyebrow">A LITTLE LUCK, A LOVELY EVENING</p><h1>今晚，好運與你同席。</h1><p class="muted">一張卡片，一條連線，就有機會帶走驚喜。</p></section>
+    <section id="claim-panel" class="panel claim-panel" hidden>
+      <div class="section-heading"><span class="section-number">01</span><h2>領取你的幸運卡</h2></div>
+      <p class="muted" id="claim-hint">請先完成報到，再使用主辦方發送的個人電子票券領卡。</p>
+      <form id="claim-form">
+        <label for="ticket-code">個人電子票券連結</label><input id="ticket-code" name="code" class="code-input" maxlength="2048" placeholder="貼上個人電子票券完整連結" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+        <p class="hint">請先完成報到。同一張電子票券可恢復原卡；姓名與桌次沿用活動名冊，請勿轉傳票券。</p>
+        <button class="button gold full" type="submit">領卡／恢復原卡 <span aria-hidden="true">↗</span></button>
+      </form>
+    </section>
+    <section id="card-panel" hidden>
+      <div class="card-meta"><div><p class="eyebrow" id="card-label">YOUR LUCKY CARD</p><h2><span id="player-greeting"></span>的賓果卡</h2></div><span class="pill" id="game-badge">第 1 局</span></div>
+      <div class="latest-strip" id="player-draw-stage"><span>最新開獎</span><strong id="player-latest" aria-hidden="true">—</strong><span id="player-round">等待主持人抽號</span></div>
+      <div class="bingo-letters" aria-hidden="true"><span>B</span><span>I</span><span>N</span><span>G</span><span>O</span></div>
+      <div id="bingo-card" class="bingo-card" role="group" aria-label="5 乘 5 賓果卡"></div>
+      <div class="card-legend"><span><i class="legend-called"></i>已開出</span><span><i class="legend-marked"></i>手動勾選</span><span id="save-status" role="status">勾選自動保存</span></div>
+      <div class="status-panel" id="player-status" role="status" aria-live="polite"></div>
+      <p class="hint centered">點擊格子做記號。中獎由系統自動判定，無須搶按按鈕。</p>
+    </section>
+    <section class="panel history-panel"><div class="section-heading between"><h2>開獎紀錄</h2><span class="muted" id="history-count">0 / 49</span></div><div id="draw-history" class="ball-history"><p class="empty">好運正在路上，請等待第一個號碼。</p></div></section>
+    <section class="rules"><h2>今晚的遊戲方式</h2><ol><li>每人一張 5×5 卡片，中央星星為免費格。</li><li>號碼 1～49；橫、直或對角任一連線即可。</li><li>共 10 個名額，每人每局限得獎一次。</li><li>依開獎回合判定；同回合超額由系統隨機抽選。</li></ol></section>
+    <button id="leave-player" class="button small subtle" type="button">切換票券</button><div id="page-error" class="error-banner" role="alert" hidden></div>
+  </main>
+  <footer class="footer">相聚一晚，留下一點幸運。<a href="{{ url_for('bingo.display') }}">投影畫面 ↗</a></footer>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <span id="draw-announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></span>
+</body>
+</html>

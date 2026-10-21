@@ -1,6 +1,6 @@
 # qrcode-checkin · 晚宴 QR Code 電子報到
 
-獨立的 Python／Flask／SQLite 專案，預設活動名稱「導生晚宴」，支援最多 200 人。介面為繁體中文、黑金風格，所有畫面與 CSV 報表時間均為 Asia/Taipei。第一版提供個人票券、工作人員掃碼／搜尋、管理後台；賓果整合留待後續。
+獨立的 Python／Flask／SQLite 專案，預設活動名稱「導生晚宴」，支援最多 200 人。介面為繁體中文、黑金風格，所有畫面與 CSV 報表時間均為 Asia/Taipei。提供個人票券、工作人員掃碼／搜尋、管理後台，以及整合的晚宴賓果：完成報到後，使用原電子票券領卡。
 
 本專案不讀寫其他專案。名冊與帳號保存在私有 `instance/`；正式 Docker 版存於獨立資料卷。
 
@@ -75,6 +75,9 @@ FLASK_SKIP_DOTENV=1 .venv/bin/python -m flask --app wsgi run --host 127.0.0.1 --
 | CSV 上傳預覽 | `/admin/import` | `/admin/import` |
 | 工作人員帳號管理 | `/admin/users` | `/admin/users` |
 | 個人票券 | `/ticket#隨機憑證` | 由管理後台開啟或複製 |
+| 玩家賓果卡 | `/bingo` | 從已報到票券按「領取／開啟賓果卡」 |
+| 賓果主持台 | `/bingo/host` | 管理員登入後使用 |
+| 公開賓果投影 | `/bingo/display` | 唯讀、使用卡號呈現得主 |
 
 手機的相機需要有效 HTTPS；電腦的 localhost／127.0.0.1 可用於本機測試。手機連到區網 HTTP 位址時，請以人工搜尋測試流程，正式掃碼驗收須用 HTTPS。`PUBLIC_BASE_URL` 必須是參加者和工作人員都能連到的同一網域根網址，不能含子路徑或查詢。正式發票前設定好網址；換網域後需重新匯出並發送連結／QR。
 
@@ -132,6 +135,12 @@ G003,陳小華,,
 
 稽核記錄包括名冊匯入／編輯、新增來賓、報到、撤回、補發、帳號異動與匯出；不記錄票券 token 或密碼。資料庫含可發送的有效票券憑證及密碼雜湊，仍屬敏感檔案。
 
+### 晚宴賓果
+
+賓果整合自 [fk8663212/bingobingo](https://github.com/fk8663212/bingobingo)，保留原遊戲規則、玩家／主持／投影介面與開獎動畫。管理員在導覽列開啟「賓果主持台」，按「開放領卡」；已報到者在自己的電子票券按「領取／開啟賓果卡」。同一人每局一張卡，重開、換裝置或補發票券可恢復原卡。工作人員不具主持權限。
+
+每局 1～49、中央免費格、最多 10 位；開獎與同回合超額抽選由伺服器交易保存。下一局需輸入「開啟下一局」確認，歷史與領獎紀錄保留。公開投影用卡號顯示得主，管理員能核對姓名與桌次。完整操作、報到撤回與補發行為、來源版本見 [賓果文件](docs/BINGO.md)。
+
 ## 6. SQLite 一致性備份與還原
 
 本系統使用 WAL、15 秒忙碌等待、明確 `BEGIN IMMEDIATE` 寫入交易，以及「同一人只能有一筆有效報到」的資料庫唯一索引。不要只複製運行中的 `.sqlite3` 而遺漏 WAL。
@@ -172,6 +181,13 @@ G003,陳小華,,
 
 # localhost 的相機安全環境與內網票券來源回歸檢查（不使用實體鏡頭）。
 .venv/bin/python -m scripts.local_camera_smoke
+
+# 報到→票券領卡→主持／投影→補發恢復，以及 200 人雙 worker 驗證。
+.venv/bin/python -m scripts.bingo_browser_smoke
+.venv/bin/python -m scripts.bingo_server_smoke
+
+# 動畫狀態測試；只有這項測試需另有 Node.js，服務本身不需要。
+node --test tests/bingo-animation.test.mjs
 ```
 
 若自行設定 `PLAYWRIGHT_BROWSERS_PATH`，安裝和執行時必須使用同一個路徑。瀏覽器腳本產生手機尺寸截圖及 `test-results/browser-results.json`，其中資料為測試假資料。本機結果與限制見 [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md)。
@@ -188,7 +204,7 @@ G003,陳小華,,
 
 只在單一可信反向代理、且應用程式沒有對外公開埠時開 `TRUST_PROXY=1`；否則用 `0`。Docker 範本已限制應用程式僅在專用網路內供 Caddy 存取。
 
-資料庫結構自動建立，第一版尚無自動升級 migration。更新版本前先備份、閱讀變更並在獨立資料副本測試；套件版本固定於 requirements，未來應定期檢查上游安全修正後再測試更新。限制資料庫於單機本機磁碟，不使用 NFS 或多主機共享 SQLite。
+資料庫結構自動建立；賓果整合採新增 `bingo_*` 資料表，既有名冊、票券及報到保留。更新版本前先做一致性備份、停止所有 worker，閱讀變更並在獨立資料副本測試，再更新及重啟。套件版本固定於 requirements，未來應定期檢查上游安全修正後再測試更新。限制資料庫於單機本機磁碟，不使用 NFS 或多主機共享 SQLite。
 
 ## 專案結構
 

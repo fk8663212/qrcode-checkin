@@ -39,6 +39,29 @@ CREATE TABLE IF NOT EXISTS import_previews (
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
 INSERT OR IGNORE INTO settings VALUES ('roster_version', 0);
 CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, expires INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS bingo_games (
+ id INTEGER PRIMARY KEY, title TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'waiting' CHECK(status IN ('waiting','playing','finished')),
+ registration_open INTEGER NOT NULL DEFAULT 0, max_winners INTEGER NOT NULL DEFAULT 10,
+ created_at REAL NOT NULL, ended_at REAL
+);
+CREATE TABLE IF NOT EXISTS bingo_cards (
+ id INTEGER PRIMARY KEY, game_id INTEGER NOT NULL REFERENCES bingo_games(id),
+ attendee_pk INTEGER NOT NULL REFERENCES attendees(id), numbers TEXT NOT NULL,
+ marks TEXT NOT NULL DEFAULT '[12]', qualified_round INTEGER,
+ UNIQUE(game_id,attendee_pk)
+);
+CREATE TABLE IF NOT EXISTS bingo_draws (
+ game_id INTEGER NOT NULL REFERENCES bingo_games(id), round INTEGER NOT NULL,
+ number INTEGER NOT NULL CHECK(number BETWEEN 1 AND 49), drawn_at REAL NOT NULL,
+ candidates TEXT NOT NULL, lottery_order TEXT NOT NULL, selected TEXT NOT NULL,
+ PRIMARY KEY(game_id,round), UNIQUE(game_id,number)
+);
+CREATE TABLE IF NOT EXISTS bingo_winners (
+ game_id INTEGER NOT NULL REFERENCES bingo_games(id), attendee_pk INTEGER NOT NULL REFERENCES attendees(id),
+ round INTEGER NOT NULL, position INTEGER NOT NULL, claimed_at REAL,
+ PRIMARY KEY(game_id,attendee_pk), UNIQUE(game_id,position)
+);
 """
 
 

@@ -41,6 +41,8 @@ Caddy 會在 DNS 和 80／443 可用時申請／續期 HTTPS 憑證；應用程�
 
 ## 資料與重建
 
+賓果與報到使用同一個服務及 SQLite，原 `checkin_data` 資料卷同時保存遊戲資料，不需新增公開埠或另一個賓果容器。既有兩個 Gunicorn worker 設定可沿用，賓果以前台短輪詢同步；整合及升級說明見 [BINGO.md](BINGO.md)。升級前先執行下方的一致性備份，再停止所有 worker、更新映像及重新啟動。
+
 - `checkin_data`：SQLite、WAL、私有備份；Compose 專案名固定 `qrcode-checkin`。
 - `caddy_data`：TLS 憑證與自動續期狀態。
 - `caddy_config`：Caddy 執行狀態。

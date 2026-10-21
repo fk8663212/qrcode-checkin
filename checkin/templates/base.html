@@ -17,7 +17,7 @@
     {% if g.user %}<div class="account"><span>{{ g.user.username }}</span><form method="post" action="{{ url_for('web.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="quiet" type="submit">登出</button></form></div>{% endif %}
   </header>
   {% if is_demo %}<div class="demo-banner">示範環境 · 僅含虛構來賓，與正式資料分開</div>{% endif %}
-  {% if g.user %}<nav class="nav" aria-label="主要導覽"><a href="{{ url_for('web.staff') }}">現場報到</a>{% if g.user.role == 'admin' %}<a href="{{ url_for('web.admin') }}">管理總覽</a><a href="{{ url_for('web.import_csv') }}">匯入名冊</a><a href="{{ url_for('web.users') }}">工作人員</a>{% endif %}</nav>{% endif %}
+  {% if g.user %}<nav class="nav" aria-label="主要導覽"><a href="{{ url_for('web.staff') }}">現場報到</a>{% if g.user.role == 'admin' %}<a href="{{ url_for('web.admin') }}">管理總覽</a><a href="{{ url_for('web.import_csv') }}">匯入名冊</a><a href="{{ url_for('web.users') }}">工作人員</a>{% if config.get('BINGO_INTEGRATED') %}<a href="{{ url_for('bingo.host') }}">賓果主持台</a><a href="{{ url_for('bingo.display') }}" target="_blank" rel="noopener">賓果投影 ↗</a>{% endif %}{% endif %}</nav>{% endif %}
   <main class="container {% block container_class %}{% endblock %}">
     {% for category, message in get_flashed_messages(with_categories=true) %}<div class="notice {{ category }}" role="status">{{ message }}</div>{% endfor %}
     {% block content %}{% endblock %}
