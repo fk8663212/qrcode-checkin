@@ -1,3 +1,3 @@
 {% extends 'base.html' %}
 {% block container_class %}narrow{% endblock %}
-{% block content %}<section class="hero compact"><p class="eyebrow">{{ code }}</p><h1>暫時無法完成操作</h1></section><section class="card"><p role="alert">{{ message }}</p><a class="button" href="{{ url_for('web.login') }}">重新登入</a><a class="button" href="{{ url_for('web.index') }}">返回首頁</a></section>{% endblock %}
+{% block content %}<section class="hero compact"><p class="eyebrow">{{ code }}</p><h1>{{ tr('暫時無法完成操作') }}</h1></section><section class="card"><p role="alert">{{ message }}</p>{% if not public_ui %}<a class="button" href="{{ url_for('web.login') }}">{{ tr('重新登入') }}</a>{% endif %}<a class="button" href="{{ url_for('web.index') }}">{{ tr('返回首頁') }}</a></section>{% endblock %}

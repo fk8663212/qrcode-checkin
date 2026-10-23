@@ -4,6 +4,7 @@ import {createRafflePresenter} from './animation.mjs';
   const root = document.getElementById('raffle-app');
   const host = root.dataset.page === 'host';
   const $ = id => document.getElementById(id);
+  const T = (source, values = {}) => window.GuestUI ? GuestUI.t(source, values) : source.replace(/\{([a-z_]+)\}/g, (match, key) => Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : match);
   let state, archive = null, online = false, busy = false, refreshing = false;
   let configSignature = '', prizeSignature = '', winnerSignature = '', displaySignature = '', redrawWinner, roundAtDialog;
   const pendingKey = 'raffle-pending-' + location.origin + '-' + root.dataset.operator;
@@ -16,7 +17,7 @@ import {createRafflePresenter} from './animation.mjs';
       state=next;
       if(host)renderHost();else renderDisplay();
     },
-    start: next => startReels(next.latest_draw.prize_name, '本次抽出 '+next.latest_draw.count+' 位 · 幸運即將揭曉'),
+    start: next => startReels(next.latest_draw.prize_name, T('本次抽出 {count} 位 · 幸運即將揭曉', {count: next.latest_draw.count})),
     stop: stopReels,
     reveal: revealWinners,
     canAnimate: () => !reducedMotion.matches && document.visibilityState==='visible',
@@ -52,7 +53,7 @@ import {createRafflePresenter} from './animation.mjs';
     stopReels();
     const stage=$('raffle-animation');stage.hidden=false;stage.classList.remove('is-revealed','without-motion');stage.classList.add('is-rolling');stage.setAttribute('aria-busy','true');
     $('animation-prize').textContent=prize;
-    $('animation-title').textContent='幸運得主即將揭曉';
+    $('animation-title').textContent=T('幸運得主即將揭曉');
     $('animation-hint').textContent=hint;
     $('raffle-reels').hidden=false;$('animation-winners').hidden=true;
     let tick=0;
@@ -73,10 +74,10 @@ import {createRafflePresenter} from './animation.mjs';
     stage.classList.toggle('without-motion',!animate || reducedMotion.matches);
     stage.classList.remove('is-revealed');void stage.offsetWidth;stage.classList.add('is-revealed');
     $('animation-prize').textContent=draw.prize_name;
-    $('animation-title').textContent='恭喜幸運得主！';
+    $('animation-title').textContent=T('恭喜幸運得主！');
     $('raffle-reels').hidden=true;$('animation-winners').hidden=false;
     $('animation-winners').replaceChildren(...winners.slice(0,12).map(w => el('strong',host ? w.name+' · '+(w.table_no || '未安排')+' 桌' : w.card_label)));
-    $('animation-hint').textContent='已揭曉 '+winners.length+' 位得主'+(winners.length>12 ? ' · 完整名單請見下方' : ' · 請核對本人後領獎');
+    $('animation-hint').textContent=T('已揭曉 {count} 位得主{detail}', {count: winners.length, detail: T(winners.length>12 ? ' · 完整名單請見下方' : ' · 請核對本人後領獎')});
     announceResult();controls();
   }
   function options(prefix = '') {
@@ -120,11 +121,12 @@ import {createRafflePresenter} from './animation.mjs';
       const started=performance.now();
       const next = await Checkin.api(path, undefined, 'GET');
       if (next.csrf) document.querySelector('meta[name="csrf-token"]').content = next.csrf;
-      online = true; $('raffle-connection').textContent = '已連線 · 每 2 秒更新';
+      online = true; $('raffle-connection').textContent = T('已連線 · 每 2 秒更新');
+      if(!host)error('');
       presenter.update(next,{elapsedMs:performance.now()-started});
     } catch (e) {
-      online = false; $('raffle-connection').textContent = '連線中斷，等待恢復';
-      error([401,403].includes(e.status) ? '登入過期或權限不足，請回登入頁重新登入。' : Checkin.errorMessage(e));
+      online = false; $('raffle-connection').textContent = T('連線中斷，等待恢復');
+      error(host && [401,403].includes(e.status) ? '登入過期或權限不足，請回登入頁重新登入。' : Checkin.errorMessage(e));
     } finally { refreshing = false; controls(); }
   }
   async function mutate(action, data) {
@@ -231,14 +233,14 @@ import {createRafflePresenter} from './animation.mjs';
     }
   }
   function renderDisplay() {
-    $('display-round-title').textContent = state.round.title;
+    $('display-round-title').textContent = ['一般抽獎','加碼抽獎'].includes(state.round.title) ? T(state.round.title) : state.round.title;
     const signature=JSON.stringify([state.round.id,state.prizes,state.winners]);
     if(signature===displaySignature)return;
     displaySignature=signature;
     const list=$('raffle-display-winners');list.replaceChildren();
-    if(!state.winners.length)list.append(el('p','幸運得主即將揭曉，請等候主持人抽獎。','raffle-empty'));
-    for(const winner of state.winners){const card=el('article',undefined,'raffle-display-winner');card.append(el('p',winner.prize_name),el('strong',winner.card_label),el('p',winner.claimed_at ? '已領獎 ✓' : '恭喜中獎'));list.append(card);}
-    $('raffle-display-prizes').replaceChildren(...state.prizes.map(p => el('p',p.name+' · '+p.awarded+' / '+p.quantity+' 份')));
+    if(!state.winners.length)list.append(el('p',T('幸運得主即將揭曉，請等候主持人抽獎。'),'raffle-empty'));
+    for(const winner of state.winners){const card=el('article',undefined,'raffle-display-winner');card.append(el('p',winner.prize_name),el('strong',winner.card_label),el('p',T(winner.claimed_at ? '已領獎 ✓' : '恭喜中獎')));list.append(card);}
+    $('raffle-display-prizes').replaceChildren(...(state.prizes.length ? state.prizes.map(p => el('p',T('{name} · {awarded} / {quantity} 份', {name: p.name, awarded: p.awarded, quantity: p.quantity}))) : [el('p',T('尚未設定獎品，請等候主持人。'),'muted')]));
   }
   if(host){
     root.querySelectorAll('fieldset').forEach(fields => {fields.disabled=true;});
@@ -252,9 +254,9 @@ import {createRafflePresenter} from './animation.mjs';
     $('new-round-form').addEventListener('submit',async e => {e.preventDefault();if(await mutate('round',{round_id:roundAtDialog,...options('new-'),confirmation:$('new-round-confirm').value})){$('new-round-dialog').close();$('raffle-result').hidden=true;}});
     $('redraw-form').addEventListener('submit',e => {e.preventDefault();const data={round_id:redrawWinner.round_id,prize_id:redrawWinner.prize_id,count:1,winner_id:redrawWinner.id,reason:$('redraw-reason').value,confirm:$('redraw-confirm').checked,request_id:Checkin.requestId()};$('redraw-dialog').close();submitDraw({action:'redraw',data});});
     root.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click',() => $(b.dataset.close).close()));
-  } else $('raffle-fullscreen').addEventListener('click',async () => {try{if(document.fullscreenElement)await document.exitFullscreen();else if(document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen();else error('此瀏覽器不支援全螢幕，請使用投影電腦的全螢幕功能。');}catch(_){error('請在投影電腦啟用瀏覽器全螢幕。');}});
+  } else $('raffle-fullscreen').addEventListener('click',async () => {try{if(document.fullscreenElement)await document.exitFullscreen();else if(document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen();else error(T('此瀏覽器不支援全螢幕，請使用投影電腦的全螢幕功能。'));}catch(_){error(T('請在投影電腦啟用瀏覽器全螢幕。'));}});
   window.addEventListener('online',refresh);
-  window.addEventListener('offline',() => {online=false;$('raffle-connection').textContent='離線，請等待網路恢復';controls();});
+  window.addEventListener('offline',() => {online=false;$('raffle-connection').textContent=T('離線，請等待網路恢復');controls();});
   document.addEventListener('visibilitychange',() => {if(document.visibilityState==='visible')refresh();else presenter.finish();});
   reducedMotion.addEventListener('change',() => {if(reducedMotion.matches){presenter.finish();stopReels();}});
   setInterval(() => {if(document.visibilityState==='visible')refresh();},2000);

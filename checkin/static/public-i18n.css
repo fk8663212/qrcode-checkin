@@ -1,0 +1,28 @@
+.language-switch{display:flex;flex-shrink:0;align-items:center;gap:2px;padding:3px;border:1px solid #655a3f;border-radius:9px;font-size:12px;line-height:1.3;white-space:nowrap}
+.language-switch a{display:flex;align-items:center;justify-content:center;min-height:38px;padding:7px 10px;color:#d6cbaa;border-radius:6px;text-decoration:none;letter-spacing:0}
+.language-switch a[aria-current=true]{background:#e5c57d;color:#17180f;font-weight:650}
+.language-switch a:focus-visible{outline:2px solid #e5c57d;outline-offset:3px}
+.public-ui .topbar{flex-wrap:wrap}
+.public-ui .topbar>.brand{flex:1;min-width:0;overflow-wrap:anywhere}
+.public-ui .brand{white-space:normal}
+.public-ui .ticket-heading{gap:10px;flex-wrap:wrap}
+.public-ui .ticket-heading .eyebrow{overflow-wrap:anywhere}
+.public-ui .brand,.public-ui .guest-name,.public-ui h1,.public-ui h2,.public-ui h3,.public-ui .winner-name,.public-ui .raffle-display-prizes{overflow-wrap:anywhere}
+.public-ui .card-meta>div,.public-ui .header-actions,.public-ui .latest-strip>span{min-width:0}
+.public-ui .card-meta{gap:12px;flex-wrap:wrap}
+.public-ui .card-legend{flex-wrap:wrap;row-gap:8px}
+.public-ui .header-actions{flex-wrap:wrap}
+.public-ui .display-draw{overflow:hidden}
+.public-ui .join-qr img{width:100%;height:auto}
+html[lang=en] .public-ui .brand{letter-spacing:.015em}
+html[lang=en] .public-ui .eyebrow{letter-spacing:.1em}
+@media(max-width:560px){
+  .public-ui .topbar{gap:12px}
+  .public-ui .topbar>.brand{flex-basis:100%}
+  .public-ui .topbar>.language-switch{margin-left:auto}
+  .public-ui .header-actions{width:100%;justify-content:flex-start}
+  .public-ui .latest-strip{flex-wrap:wrap;gap:8px}
+  .public-ui .latest-strip>span:last-child{flex-basis:100%;text-align:center}
+  .public-ui .display-counts{flex-wrap:wrap}
+  html[lang=en] .public-ui .card-meta h2{font-size:20px}
+}

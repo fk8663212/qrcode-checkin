@@ -2,23 +2,23 @@
 {% block scripts %}<script defer src="{{ url_for('static', filename='ticket.js') }}"></script>{% endblock %}
 {% block container_class %}narrow{% endblock %}
 {% block content %}
-<section class="hero compact"><p class="eyebrow">YOUR INVITATION</p><h1>個人電子票券</h1></section>
-<p id="ticket-message" class="notice" role="status">正在讀取票券…</p>
+<section class="hero compact"><p class="eyebrow">YOUR INVITATION</p><h1>{{ tr('個人電子票券') }}</h1></section>
+<p id="ticket-message" class="notice" role="status">{{ tr('正在讀取票券…') }}</p>
 <article id="ticket-card" class="card ticket" hidden>
-  <div class="ticket-heading"><span class="eyebrow">{{ event_name }}</span><span id="ticket-status" class="badge">待報到</span></div>
+  <div class="ticket-heading"><span class="eyebrow">{{ event_name }}</span><span id="ticket-status" class="badge">{{ tr('待報到') }}</span></div>
   <h2 id="ticket-name" class="guest-name"></h2><p id="ticket-affiliation" class="muted"></p>
-  <div class="table-label">您的桌次<strong id="ticket-table"></strong></div>
-  {% if config.get('RAFFLE_INTEGRATED') %}<p class="muted">您的抽獎號碼：<strong id="ticket-raffle-label"></strong></p><p class="small muted">完成報到後，依主持人設定參加抽獎；投影以此號碼公告得主。</p>{% endif %}
-  <div class="qr-wrap"><img id="ticket-qr" alt="個人報到 QR Code" width="280" height="280"></div>
-  <p class="small muted">請在入口出示此 QR Code，由工作人員核對並確認。</p>
+  <div class="table-label">{{ tr('您的桌次') }}<strong id="ticket-table"></strong></div>
+  {% if config.get('RAFFLE_INTEGRATED') %}<p class="muted">{{ tr('您的抽獎號碼：') }}<strong id="ticket-raffle-label"></strong></p><p class="small muted">{{ tr('完成報到後，依主持人設定參加抽獎；投影以此號碼公告得主。') }}</p>{% endif %}
+  <div class="qr-wrap"><img id="ticket-qr" alt="{{ tr('個人報到 QR Code') }}" width="280" height="280"></div>
+  <p class="small muted">{{ tr('請在入口出示此 QR Code，由工作人員核對並確認。') }}</p>
   <p id="ticket-time" class="success-text"></p>
   {% include 'event_details.html' %}
-  <button type="button" id="refresh-ticket" class="full">更新報到狀態</button>
+  <button type="button" id="refresh-ticket" class="full">{{ tr('更新報到狀態') }}</button>
   {% if config.get('BINGO_INTEGRATED') %}
-  <button type="button" id="join-bingo" class="primary full top-space" hidden>領取／開啟賓果卡</button>
-  <p id="bingo-message" class="small muted top-space" role="status">完成報到後，可使用這張電子票券領取賓果卡。</p>
+  <button type="button" id="join-bingo" class="primary full top-space" hidden>{{ tr('領取／開啟賓果卡') }}</button>
+  <p id="bingo-message" class="small muted top-space" role="status">{{ tr('完成報到後，可使用這張電子票券領取賓果卡。') }}</p>
   {% endif %}
 </article>
-<div class="ticket-note small muted">此票券僅供本人使用，請妥善保管，避免轉傳。<br>開啟票券與自行掃碼都不會自動報到。</div>
-<button type="button" id="retry-ticket" class="full" hidden>重新讀取票券</button>
+<div class="ticket-note small muted">{{ tr('此票券僅供本人使用，請妥善保管，避免轉傳。') }}<br>{{ tr('開啟票券與自行掃碼都不會自動報到。') }}</div>
+<button type="button" id="retry-ticket" class="full" hidden>{{ tr('重新讀取票券') }}</button>
 {% endblock %}

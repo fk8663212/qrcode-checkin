@@ -49,11 +49,11 @@ def main():
             threading.Thread(target=server.serve_forever,daemon=True).start()
             browser=getattr(playwright,engine).launch()
             errors=[]
-            context=browser.new_context(viewport={'width':1440,'height':1000})
+            context=browser.new_context(locale='zh-TW',viewport={'width':1440,'height':1000})
             context.on('page',lambda page:page.on('pageerror',lambda error:errors.append(str(error))))
             host=context.new_page()
             try:
-                ticket=browser.new_context(**playwright.devices['iPhone 13' if engine=='webkit' else 'Pixel 7']).new_page()
+                ticket=browser.new_context(locale='zh-TW',**playwright.devices['iPhone 13' if engine=='webkit' else 'Pixel 7']).new_page()
                 ticket.goto(base+'/ticket#'+token)
                 expect(ticket.locator('#ticket-raffle-label')).to_have_text('P001')
                 assert ticket.evaluate('document.documentElement.scrollWidth <= innerWidth')
@@ -76,7 +76,7 @@ def main():
                     expect(host.locator('.raffle-prize h3').filter(has_text=name)).to_be_visible()
 
                 add_prize('禮券',2)
-                display=browser.new_context(viewport={'width':1522,'height':1000}).new_page()
+                display=browser.new_context(locale='zh-TW',viewport={'width':1522,'height':1000}).new_page()
                 display.goto(base+'/raffle/display')
                 expect(display.locator('#raffle-display-winners')).to_contain_text('幸運得主即將揭曉')
                 host.bring_to_front()

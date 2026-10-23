@@ -41,7 +41,7 @@ def main():
             with sync_playwright() as playwright:
                 for engine in ('webkit', 'chromium'):
                     browser = getattr(playwright, engine).launch()
-                    context = browser.new_context()
+                    context = browser.new_context(locale='zh-TW')
                     context.add_cookies([{'name': app.config['SESSION_COOKIE_NAME'], 'value': cookie,
                                          'url': base, 'httpOnly': True, 'sameSite': 'Lax'}])
                     page = context.new_page()

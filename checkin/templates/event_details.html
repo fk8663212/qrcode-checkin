@@ -1,10 +1,10 @@
 {% if event_info is defined and (event_info.starts_at or event_info.location or event_info.organizer or event_info.contact or event_info.notice) %}
-<section class="event-info" aria-label="活動資訊">
+<section class="event-info" aria-label="{{ tr('活動資訊') }}">
   <dl>
-    {% if event_info.starts_at %}<div><dt>活動時間</dt><dd>{{ event_info.starts_at|taipei }}</dd></div>{% endif %}
-    {% if event_info.location %}<div><dt>活動地點</dt><dd>{{ event_info.location }}</dd></div>{% endif %}
-    {% if event_info.organizer %}<div><dt>主辦單位</dt><dd>{{ event_info.organizer }}</dd></div>{% endif %}
-    {% if event_info.contact %}<div><dt>聯絡方式</dt><dd>{{ event_info.contact }}</dd></div>{% endif %}
+    {% if event_info.starts_at %}<div><dt>{{ tr('活動時間') }}</dt><dd>{{ event_info.starts_at|taipei }}</dd></div>{% endif %}
+    {% if event_info.location %}<div><dt>{{ tr('活動地點') }}</dt><dd>{{ event_info.location }}</dd></div>{% endif %}
+    {% if event_info.organizer %}<div><dt>{{ tr('主辦單位') }}</dt><dd>{{ event_info.organizer }}</dd></div>{% endif %}
+    {% if event_info.contact %}<div><dt>{{ tr('聯絡方式') }}</dt><dd>{{ event_info.contact }}</dd></div>{% endif %}
   </dl>
   {% if event_info.notice %}<p class="small muted">{{ event_info.notice }}</p>{% endif %}
 </section>

@@ -1,5 +1,6 @@
 'use strict';
 (() => {
+  const T = GuestUI.t;
   const token = location.hash.slice(1);
   const message = document.getElementById('ticket-message');
   const card = document.getElementById('ticket-card');
@@ -13,27 +14,27 @@
     retry.hidden = true;
     message.hidden = false;
     message.className = 'notice';
-    message.textContent = '正在向伺服器確認票券狀態…';
+    message.textContent = T('正在向伺服器確認票券狀態…');
     try {
       if (!/^[A-Za-z0-9_-]{43}$/.test(token)) {
-        const error = new Error('票券連結不完整，請從主辦方訊息開啟完整連結，或洽現場工作人員。');
+        const error = new Error(T('票券連結不完整，請從主辦方訊息開啟完整連結，或洽現場工作人員。'));
         error.status = 400; throw error;
       }
       const data = await Checkin.api('/api/ticket', { token });
       document.getElementById('ticket-name').textContent = data.name;
-      document.getElementById('ticket-affiliation').textContent = data.affiliation || '歡迎蒞臨晚宴';
-      document.getElementById('ticket-table').textContent = data.table_no || '現場安排';
+      document.getElementById('ticket-affiliation').textContent = data.affiliation || T('歡迎蒞臨晚宴');
+      document.getElementById('ticket-table').textContent = data.table_no || T('現場安排');
       const raffleLabel = document.getElementById('ticket-raffle-label');
       if (raffleLabel) raffleLabel.textContent = data.raffle_label || '—';
       document.getElementById('ticket-qr').src = data.qr;
       const status = document.getElementById('ticket-status');
-      status.textContent = data.checked_in ? '已報到' : '待報到';
+      status.textContent = T(data.checked_in ? '已報到' : '待報到');
       status.className = `badge ${data.checked_in ? 'success' : ''}`;
-      document.getElementById('ticket-time').textContent = data.checked_at ? `報到時間：${Checkin.time(data.checked_at)}` : '';
+      document.getElementById('ticket-time').textContent = data.checked_at ? T('報到時間：{time}', {time: Checkin.time(data.checked_at)}) : '';
       if (joinBingo) {
         joinBingo.hidden = !data.checked_in;
         bingoMessage.className = 'small muted top-space';
-        bingoMessage.textContent = data.checked_in ? '主持人開放領卡後，點選上方按鈕即可領取或恢復同一張卡。' : '完成報到後，可使用這張電子票券領取賓果卡。';
+        bingoMessage.textContent = T(data.checked_in ? '主持人開放領卡後，點選上方按鈕即可領取或恢復同一張卡。' : '完成報到後，可使用這張電子票券領取賓果卡。');
       }
       card.hidden = false; message.hidden = true;
     } catch (error) {
@@ -51,7 +52,7 @@
       location.assign('/bingo');
     } catch (error) {
       bingoMessage.className = 'notice error top-space';
-      bingoMessage.textContent = error.status ? error.message : '網路中斷或逾時，領卡結果尚未確認。可安全重試，系統會恢復同一張卡。';
+      bingoMessage.textContent = error.status ? error.message : T('網路中斷或逾時，領卡結果尚未確認。可安全重試，系統會恢復同一張卡。');
     } finally { joinBingo.disabled = false; }
   });
   retry.addEventListener('click', load);

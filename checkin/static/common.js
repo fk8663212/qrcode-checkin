@@ -7,12 +7,14 @@ window.Checkin = {
       const response = await fetch(path, {
         method, credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
         headers: { 'Content-Type': 'application/json',
+          ...(window.GuestUI ? {'X-UI-Language': GuestUI.language} : {}),
           'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content },
         ...(method === 'GET' ? {} : { body: JSON.stringify(data) })
       });
       const value = await response.json();
       if (!response.ok) {
-        const error = new Error(value.error || '伺服器無法完成操作，請重試。');
+        const fallback = '伺服器無法完成操作，請重試。';
+        const error = new Error(value.error || (window.GuestUI ? GuestUI.t(fallback) : fallback));
         error.status = response.status;
         throw error;
       }
@@ -21,7 +23,7 @@ window.Checkin = {
   },
   time(value) {
     if (!value) return '—';
-    return new Intl.DateTimeFormat('zh-TW', {
+    return new Intl.DateTimeFormat(window.GuestUI?.language === 'en' ? 'en-GB' : 'zh-TW', {
       timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
       hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
     }).format(new Date(value));
@@ -33,8 +35,9 @@ window.Checkin = {
   },
   errorMessage(error, writing = false) {
     if (error.status) return error.message;
-    return writing ? '連線中斷或請求逾時，尚未確認報到結果。請保留此畫面並再次按「確認報到」；安全重試不會重複計數。'
+    const message = writing ? '連線中斷或請求逾時，尚未確認報到結果。請保留此畫面並再次按「確認報到」；安全重試不會重複計數。'
       : '無法連線或請求逾時，請確認網路後重試。';
+    return window.GuestUI ? GuestUI.t(message) : message;
   }
 };
 document.querySelectorAll('[data-copy]').forEach(button => {

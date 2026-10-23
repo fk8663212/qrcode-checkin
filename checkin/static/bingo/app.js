@@ -2,6 +2,7 @@
 import {createDrawPresenter} from './draw-animation.mjs';
 
 const $ = (id) => document.getElementById(id);
+const T = (source, values = {}) => window.GuestUI ? GuestUI.t(source, values) : source.replace(/\{([a-z_]+)\}/g, (match, key) => Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : match);
 const page = document.body.dataset.page;
 let state = null, csrf = document.querySelector('meta[name="csrf-token"]').content, busy = false, archiveId = null, latestGameId = null;
 let resetGameId = null;
@@ -31,7 +32,7 @@ function ticketCredential(value) {
     if (allowed.includes(url.origin) && ['/ticket', '/bingo'].includes(url.pathname)
         && /^[A-Za-z0-9_-]{43}$/.test(url.hash.slice(1))) return url.hash.slice(1);
   } catch (_) { /* Show the same helpful message for malformed input. */ }
-  throw new Error('請開啟主辦方發送的個人電子票券，或貼上本活動的完整票券連結。');
+  throw new Error(T('請開啟主辦方發送的個人電子票券，或貼上本活動的完整票券連結。'));
 }
 function storageKey(cardId) { return 'bingo-marks-' + state.scope + '-' + cardId; }
 
@@ -47,7 +48,7 @@ function connection(ok, message) {
   online = ok;
   const el = $('connection');
   el.className = 'connection ' + (ok ? 'online' : 'offline');
-  el.textContent = message || (ok ? '即時連線' : '重新連線中');
+  el.textContent = message || T(ok ? '即時連線' : '重新連線中');
   if (page === 'host' && state) hostButtons();
 }
 function toast(message) {
@@ -60,17 +61,18 @@ async function api(path, body) {
   try {
     response = await fetch(path, {
       method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store',
-      headers: body === undefined ? {} : { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      headers: {...(window.GuestUI ? {'X-UI-Language': GuestUI.language} : {}),
+        ...(body === undefined ? {} : {'Content-Type': 'application/json', 'X-CSRF-Token': csrf})},
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined,
     });
   } catch (cause) {
     connection(false);
-    throw new Error('連線中斷，請確認網路。畫面恢復後會自動同步。', { cause });
+    throw new Error(T('連線中斷，請確認網路。畫面恢復後會自動同步。'), { cause });
   }
   const result = await response.json();
   if (!response.ok) {
-    const e = new Error(result.error || '操作失敗，請重新整理。');
+    const e = new Error(result.error || T('操作失敗，請重新整理。'));
     e.status = response.status;
     throw e;
   }
@@ -110,7 +112,7 @@ function renderSnapshot(next) {
   else renderDisplay();
   renderHistory();
   const stage = $(stageId);
-  if (stage && page !== 'player') stage.setAttribute('aria-label', state.draws.length ? '最新號碼 ' + latestNumber() : '等待開獎');
+  if (stage && page !== 'player') stage.setAttribute('aria-label', state.draws.length ? T('最新號碼 {number}', {number: latestNumber()}) : T('等待開獎'));
 }
 function stopNumberRoll() {
   clearTimeout(rollTimer); clearTimeout(revealTimer);
@@ -124,9 +126,9 @@ function startNumberRoll({round, remainingMs, pool}) {
   if (!stage) return;
   stage.classList.add('is-rolling');
   stage.setAttribute('aria-busy', 'true');
-  if (page !== 'player') stage.setAttribute('aria-label', '第 ' + round + ' 回合開獎中');
-  text(captionId, '第 ' + round + ' 回合 · 幸運號碼即將揭曉');
-  text('draw-announcement', '第 ' + round + ' 回合開獎中');
+  if (page !== 'player') stage.setAttribute('aria-label', T('第 {round} 回合開獎中', {round}));
+  text(captionId, T('第 {round} 回合 · 幸運號碼即將揭曉', {round}));
+  text('draw-announcement', T('第 {round} 回合開獎中', {round}));
   if (page === 'host') { text('host-game-status', '開獎中'); hostButtons(); }
   const started = performance.now();
   let previous = null;
@@ -142,7 +144,7 @@ function startNumberRoll({round, remainingMs, pool}) {
 }
 function revealNumber(next, effects) {
   const draw = next.draws.at(-1);
-  text('draw-announcement', '第 ' + draw.round + ' 回合，號碼 ' + draw.number);
+  text('draw-announcement', T('第 {round} 回合，號碼 {number}', {round: draw.round, number: draw.number}));
   if (!effects) return;
   const stage = $(stageId);
   stage?.classList.add('is-revealing');
@@ -161,30 +163,30 @@ function revealNumber(next, effects) {
 function renderHistory() {
   text('history-count', state.draws.length + ' / 49');
   const history = $('draw-history'); history.replaceChildren();
-  if (!state.draws.length) { history.append(node('p', 'empty', '好運正在路上，請等待第一個號碼。')); return; }
+  if (!state.draws.length) { history.append(node('p', 'empty', T('好運正在路上，請等待第一個號碼。'))); return; }
   state.draws.forEach((d, i) => {
     const ball = node('span', 'history-ball' + (i === state.draws.length - 1 ? ' latest' : ''), d.number);
-    ball.title = '第 ' + d.round + ' 回合';
-    ball.setAttribute('aria-label', '第 ' + d.round + ' 回合，號碼 ' + d.number);
+    ball.title = T('第 {round} 回合', {round: d.round});
+    ball.setAttribute('aria-label', T('第 {round} 回合，號碼 {number}', {round: d.round, number: d.number}));
     history.append(ball);
   });
 }
 function latestNumber() { return state.draws.length ? state.draws[state.draws.length - 1].number : '—'; }
-function gameStatus() { return ({waiting: '等待開獎', playing: '開獎進行中', finished: '本局已結束'})[state.game.status]; }
+function gameStatus() { return T(({waiting: '等待開獎', playing: '開獎進行中', finished: '本局已結束'})[state.game.status]); }
 
 function renderPlayer() {
-  text('prize-rule', '本局共 ' + state.game.max_winners + ' 份獎品，每人每局限得獎一次。');
+  text('prize-rule', T('本局共 {count} 份獎品，每人每局限得獎一次。', {count: state.game.max_winners}));
   const card = state.card;
   show('claim-panel', !card); show('card-panel', !!card);
   if (!card) {
     if (ticketToken && !$('ticket-code').value) $('ticket-code').value = ticketToken;
-    text('claim-hint', state.game.registration_open ? '領卡已開放，請先完成活動報到，再使用個人電子票券領卡。' : '目前未開放新領卡。已領卡者可使用最新的個人電子票券恢復原卡。');
+    text('claim-hint', T(state.game.registration_open ? '領卡已開放，請先完成活動報到，再使用個人電子票券領卡。' : '目前未開放新領卡。已領卡者可使用最新的個人電子票券恢復原卡。'));
     return;
   }
   text('card-label', card.card_label + ' · YOUR LUCKY CARD');
-  text('player-greeting', card.name); text('game-badge', '第 ' + state.game.id + ' 局');
+  text('player-greeting', T('{name}的賓果卡', {name: card.name})); text('game-badge', T('第 {game} 局', {game: state.game.id}));
   text('player-latest', latestNumber());
-  text('player-round', state.draws.length ? '第 ' + state.draws.length + ' 回合 · ' + gameStatus() : '等待主持人抽號');
+  text('player-round', state.draws.length ? T('第 {round} 回合 · {status}', {round: state.draws.length, status: gameStatus()}) : T('等待主持人抽號'));
   if (pendingMarks && pendingMarks.cardId !== card.id) {
     removeOutbox(pendingMarks.cardId); pendingMarks = null;
   }
@@ -200,16 +202,16 @@ function renderPlayer() {
   const status = $('player-status'); status.replaceChildren();
   let title, detail;
   if (win) {
-    title = 'BINGO！今晚的幸運得主 ✦';
-    detail = '第 ' + win.round + ' 回合達成連線，' + (win.claimed_at ? '已完成領獎。' : '請帶著 ' + card.card_label + ' 與此畫面向工作人員領獎。');
+    title = T('BINGO！今晚的幸運得主 ✦');
+    detail = T('第 {round} 回合達成連線，{detail}', {round: win.round, detail: win.claimed_at ? T('已完成領獎。') : T('請帶著 {card} 與此畫面向工作人員領獎。', {card: card.card_label})});
   } else if (card.qualified_round) {
-    title = '已達成連線，謝謝參與！';
-    detail = '第 ' + card.qualified_round + ' 回合多人同時連線，剩餘名額由系統隨機抽選，本次未入選。';
+    title = T('已達成連線，謝謝參與！');
+    detail = T('第 {round} 回合多人同時連線，剩餘名額由系統隨機抽選，本次未入選。', {round: card.qualified_round});
   } else if (state.game.status === 'finished') {
-    title = '本局已結束'; detail = '謝謝你一起參與，下一次好運再相聚。';
+    title = T('本局已結束'); detail = T('謝謝你一起參與，下一次好運再相聚。');
   } else {
-    title = state.game.status === 'waiting' ? '幸運卡已就位' : '等候你的幸運連線';
-    detail = state.game.status === 'waiting' ? '重新整理保留原卡；換裝置時，使用最新的個人電子票券恢復。' : '已開出的格子會有金色邊框。即使沒有勾選，仍會自動判定中獎。';
+    title = T(state.game.status === 'waiting' ? '幸運卡已就位' : '等候你的幸運連線');
+    detail = T(state.game.status === 'waiting' ? '重新整理保留原卡；換裝置時，使用最新的個人電子票券恢復。' : '已開出的格子會有金色邊框。即使沒有勾選，仍會自動判定中獎。');
   }
   status.append(node('strong', '', title), node('span', '', detail));
 }
@@ -228,7 +230,8 @@ function renderCard() {
     const cell = node('button', 'bingo-cell' + (drawn.has(number) ? ' called' : '') + (marks.has(i) ? ' marked' : '') + (free ? ' free' : '') + (winning.has(i) ? ' winning' : ''));
     cell.type = 'button'; cell.dataset.index = String(i);
     cell.setAttribute('aria-pressed', marks.has(i) ? 'true' : 'false');
-    cell.setAttribute('aria-label', free ? '中央免費格，已勾選' : '號碼 ' + number + (drawn.has(number) ? '，已開出' : '，尚未開出') + (marks.has(i) ? '，已勾選' : '，未勾選'));
+    cell.setAttribute('aria-label', free ? T('中央免費格，已勾選') : T('號碼 {number}，{called}，{marked}', {number,
+      called: T(drawn.has(number) ? '已開出' : '尚未開出'), marked: T(marks.has(i) ? '已勾選' : '未勾選')}));
     cell.append(node('span', '', free ? '✦' : number));
     if (free) { cell.append(node('small', '', 'FREE')); cell.disabled = true; }
     else cell.addEventListener('click', () => toggleMark(i));
@@ -246,7 +249,7 @@ function toggleMark(i) {
   const current = new Set(pendingMarks ? pendingMarks.marks : state.card.marks);
   current.has(i) ? current.delete(i) : current.add(i); current.add(12);
   pendingMarks = { cardId: state.card.id, gameId: state.game.id, marks: [...current].sort((a,b) => a-b) };
-  persistOutbox(); text('save-status', '儲存中…'); renderCard(); saveMarks();
+  persistOutbox(); text('save-status', T('儲存中…')); renderCard(); saveMarks();
 }
 async function saveMarks() {
   if (savingMarks || !pendingMarks) return;
@@ -261,12 +264,12 @@ async function saveMarks() {
       });
       if (pendingMarks === submitted) { removeOutbox(submitted.cardId); pendingMarks = null; }
     }
-    text('save-status', '已保存');
+    text('save-status', T('已保存'));
     if (state.card) renderCard();
   } catch (e) {
-    text('save-status', '待連線後儲存');
+    text('save-status', T('待連線後儲存'));
     if (e.status === 409 && pendingMarks) { removeOutbox(pendingMarks.cardId); pendingMarks = null; refresh(); }
-    else if (e.status === 401) { toast('請使用最新電子票券恢復原卡，手動勾選暫存在此裝置。'); refresh(); }
+    else if (e.status === 401) { toast(T('請使用最新電子票券恢復原卡，手動勾選暫存在此裝置。')); refresh(); }
   } finally { savingMarks = false; }
 }
 
@@ -275,13 +278,13 @@ function renderWinners(id, host) {
   list.classList.toggle('has-many', !host && state.winners.length > 5);
   if (!state.winners.length) {
     const empty = node('div', 'empty-winners');
-    empty.append(node('span', 'empty-symbol', '✧'), node('h3', '', '幸運席位，為你保留'), node('p', 'muted', '第一位得主即將登場。')); list.append(empty); return;
+    empty.append(node('span', 'empty-symbol', '✧'), node('h3', '', T('幸運席位，為你保留')), node('p', 'muted', T('第一位得主即將登場。'))); list.append(empty); return;
   }
   state.winners.forEach(w => {
     const row = node('div', 'winner-row');
     row.dataset.playerId = String(w.player_id);
     const info = node('div', 'winner-name');
-    info.append(node('strong', '', w.name), node('small', '', w.card_label + (host && w.table_no ? ' · ' + w.table_no + ' 桌' : '') + ' · 第 ' + w.round + ' 回合連線'));
+    info.append(node('strong', '', host ? w.name : T('幸運來賓')), node('small', '', host ? w.card_label + (w.table_no ? ' · ' + w.table_no + ' 桌' : '') + ' · 第 ' + w.round + ' 回合連線' : T('{card} · 第 {round} 回合連線', {card: w.card_label, round: w.round})));
     row.append(node('span', 'winner-rank', String(w.position).padStart(2, '0')), info);
     if (host) {
       const button = node('button', 'button small' + (w.claimed_at ? ' claimed' : ''), w.claimed_at ? '已領獎 ✓' : '標記領獎');
@@ -291,7 +294,7 @@ function renderWinners(id, host) {
         if (w.claimed_at && !confirm('取消 ' + w.name + ' 的已領獎標記？')) return;
         hostAction('/api/bingo/admin/claimed', {game_id: state.game.id, player_id: w.player_id, claimed: !w.claimed_at}, '領獎紀錄已更新');
       }); row.append(button);
-    } else row.append(node('span', 'winner-tag', w.claimed_at ? '已領獎' : '恭喜中獎'));
+    } else row.append(node('span', 'winner-tag', T(w.claimed_at ? '已領獎' : '恭喜中獎')));
     list.append(row);
   });
 }
@@ -379,9 +382,9 @@ async function hostAction(path, body, message) {
   finally { busy = false; await refresh(); }
 }
 function renderDisplay() {
-  text('display-game', '第 ' + state.game.id + ' 局');
+  text('display-game', T('第 {game} 局', {game: state.game.id}));
   text('display-latest', state.draws.length ? latestNumber() : '✦');
-  text('display-round', state.game.status === 'finished' ? '本局已結束，恭喜今晚的幸運得主。' : state.draws.length ? '第 ' + state.draws.length + ' 回合 · 幸運正在發生' : '與你同席的好運，即將登場。');
+  text('display-round', state.game.status === 'finished' ? T('本局已結束，恭喜今晚的幸運得主。') : state.draws.length ? T('第 {round} 回合 · 幸運正在發生', {round: state.draws.length}) : T('與你同席的好運，即將登場。'));
   text('display-players', state.player_count); text('display-drawn', state.draws.length);
   text('display-winner-count', state.winners.length + ' / ' + state.game.max_winners);
   renderWinners('display-winners', false);
@@ -396,7 +399,7 @@ if (page === 'player') {
     e.preventDefault(); const button = e.target.querySelector('button'); button.disabled = true;
     try {
       await api('/api/bingo/claim', {token: ticketCredential($('ticket-code').value)});
-      $('ticket-code').value = ''; toast('卡片已就位，祝你今晚好運！'); await refresh();
+      $('ticket-code').value = ''; toast(T('卡片已就位，祝你今晚好運！')); await refresh();
     } catch (err) { error(err.message); }
     finally { button.disabled = false; }
   });
@@ -431,8 +434,8 @@ if (page === 'display') {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
       else if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
-      else toast('此瀏覽器不支援全螢幕，請使用投影電腦的瀏覽器。');
-    } catch (_) { toast('請在投影電腦上使用瀏覽器全螢幕功能。'); }
+      else toast(T('此瀏覽器不支援全螢幕，請使用投影電腦的瀏覽器。'));
+    } catch (_) { toast(T('請在投影電腦上使用瀏覽器全螢幕功能。')); }
   });
 }
 document.addEventListener('visibilitychange', () => {
@@ -441,6 +444,6 @@ document.addEventListener('visibilitychange', () => {
 });
 reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) { drawPresenter.finish(); stopNumberRoll(); } });
 window.addEventListener('online', () => { refresh(); });
-window.addEventListener('offline', () => connection(false, '離線 · 等待網路恢復'));
+window.addEventListener('offline', () => connection(false, T('離線 · 等待網路恢復')));
 setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 2000);
 refresh();

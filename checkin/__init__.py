@@ -84,8 +84,10 @@ def create_app(test_config=None):
     initialize_admin(app)
 
     from .security import install_security
+    from .i18n import install_i18n, public_error
     from .views import bp
     from .cli import register_cli
+    install_i18n(app)
     install_security(app)
     app.register_blueprint(bp)
     register_cli(app)
@@ -122,7 +124,7 @@ def create_app(test_config=None):
     @app.errorhandler(HTTPException)
     def http_error(error):
         if isinstance(error, SecurityError):
-            return '網域不正確，請使用主辦方提供的正式網址。', 400
+            return public_error('網域不正確，請使用主辦方提供的正式網址。'), 400
         messages = {400: '資料格式錯誤，請重新確認。', 401: '請先登入工作人員帳號。',
                     403: '權限不足或驗證已過期，請重新整理後再試。',
                     404: '查無資料，票券可能已失效。請洽現場工作人員。',
@@ -130,6 +132,7 @@ def create_app(test_config=None):
                     413: '檔案過大，請使用 1 MB 以下的 UTF-8 CSV。',
                     429: '操作過於頻繁，請稍候再試。'}
         message = error.description if error.description != error.__class__.description else messages.get(error.code, '無法完成操作。')
+        message = public_error(message)
         if request.path.startswith('/api/'):
             response = jsonify(error=message)
         else:
@@ -143,7 +146,7 @@ def create_app(test_config=None):
     def database_busy(_error):
         # Never log request bodies, ticket credentials, SQL parameters or form data.
         app.logger.error('資料庫操作失敗；請檢查磁碟空間與資料卷權限。')
-        message = '伺服器尚未確認寫入，請稍後安全重試，或聯絡管理員。'
+        message = public_error('伺服器尚未確認寫入，請稍後安全重試，或聯絡管理員。')
         if request.path.startswith('/api/'):
             return jsonify(error=message), 503
         return render_template('error.html', message=message, code=503), 503

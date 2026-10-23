@@ -65,7 +65,7 @@ def main():
             with sync_playwright() as playwright:
                 for browser_name, device_name, offset in [('chromium', 'Pixel 7', 0), ('webkit', 'iPhone 13', 4)]:
                     browser = getattr(playwright, browser_name).launch()
-                    context = browser.new_context(**playwright.devices[device_name])
+                    context = browser.new_context(locale='zh-TW', **playwright.devices[device_name])
                     errors = []
                     context.on('page', lambda page: page.on('pageerror', lambda error: errors.append(str(error))))
                     page = context.new_page()
@@ -143,7 +143,7 @@ def main():
                     expect(page.locator('#result-label')).to_have_text('已報到 · 請勿重複計數')
                     assert count(pk) == 1
 
-                    public_context = browser.new_context(**playwright.devices[device_name])
+                    public_context = browser.new_context(locale='zh-TW', **playwright.devices[device_name])
                     public = public_context.new_page()
                     urls = []
                     public.on('request', lambda request: urls.append(request.url))
@@ -208,7 +208,7 @@ def main():
                 video.write_bytes(b'YUV4MPEG2 W640 H480 F5:1 Ip A0:0 C420\n' + (b'FRAME\n' + frame) * 20)
                 browser = playwright.chromium.launch(args=['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream',
                                                            '--use-file-for-fake-video-capture=' + str(video)])
-                context = browser.new_context(permissions=['camera'], viewport={'width': 390, 'height': 844})
+                context = browser.new_context(locale='zh-TW', permissions=['camera'], viewport={'width': 390, 'height': 844})
                 page = context.new_page()
                 login(page)
                 page.evaluate('window.BarcodeDetector = undefined')

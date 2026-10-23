@@ -1,0 +1,6 @@
+{% if public_ui %}
+<nav class="language-switch" aria-label="{{ tr('語言') }}">
+  <a href="?lang=zh-TW" data-ui-language="zh-TW" lang="zh-Hant"{% if ui_language == 'zh-TW' %} aria-current="true"{% endif %}>繁體中文</a>
+  <a href="?lang=en" data-ui-language="en" lang="en"{% if ui_language == 'en' %} aria-current="true"{% endif %}>English</a>
+</nav>
+{% endif %}

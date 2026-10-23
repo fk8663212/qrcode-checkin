@@ -1,0 +1,5 @@
+{% if public_ui %}
+<link rel="stylesheet" href="{{ url_for('static', filename='public-i18n.css') }}">
+<script type="application/json" id="public-strings">{{ {'language': ui_language, 'strings': public_strings}|tojson }}</script>
+<script defer src="{{ url_for('static', filename='public-i18n.js') }}"></script>
+{% endif %}

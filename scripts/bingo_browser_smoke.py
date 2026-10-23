@@ -42,7 +42,7 @@ def main():
             errors, urls = [], []
 
             def context(mobile=False):
-                result = browser.new_context(**(playwright.devices[device] if mobile else {'viewport':{'width':1522,'height':1000}}))
+                result = browser.new_context(locale='zh-TW', **(playwright.devices[device] if mobile else {'viewport':{'width':1522,'height':1000}}))
                 result.on('page',lambda page:page.on('pageerror',lambda error:errors.append(str(error))))
                 result.on('request',lambda request:urls.append(request.url))
                 return result
@@ -88,7 +88,7 @@ def main():
                 player.locator('#join-bingo').click()
                 player.wait_for_url('**/bingo')
                 expect(player.locator('.bingo-cell')).to_have_count(25)
-                expect(player.locator('#player-greeting')).to_have_text('整合來賓一')
+                expect(player.locator('#player-greeting')).to_have_text('整合來賓一的賓果卡')
                 expect(player.locator('#prize-rule')).to_have_text('本局共 3 份獎品，每人每局限得獎一次。')
                 player.locator('.bingo-cell[data-index="0"]').click()
                 expect(player.locator('#save-status')).to_have_text('已保存')

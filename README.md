@@ -112,6 +112,10 @@ G003,陳小華,,
 
 補發需填原因並勾選確認，舊票立即失效，原來賓、報到狀態與歷史保留。相同管理表單重送會被拒絕，避免意外連續補發。補發後請重新傳送新連結。
 
+參加者介面提供 **繁體中文／English**，涵蓋首頁、票券、賓果玩家頁、賓果與抽獎投影，以及狀態／錯誤提示。首次依瀏覽器語言選擇，頁首可手動切換並記住選擇；管理、主持及工作人員頁維持繁體中文。切換語言會保留票券及原賓果卡，不會完成報到。
+
+可直接開啟 `/bingo?lang=en`、`/bingo/display?lang=en`、`/raffle/display?lang=en`。需要預先指定英文票券時，使用 `/ticket?lang=en#原憑證`，請保留完整 `#` 片段。活動名稱、地點、提醒、姓名及獎品等自訂內容照原文顯示，主辦方可事先輸入中英並列文字；不會自動翻譯個資。完整方式見 [雙語操作說明](docs/LANGUAGES.md)。
+
 ## 4. 工作人員現場操作
 
 1. 管理員到「工作人員」為每位人員建立獨立帳號，個別交付密碼；可重設、停用、重新啟用。
@@ -197,6 +201,9 @@ G003,陳小華,,
 # 一般抽獎、領獎與重抽、回應遺失後重試，以及 200 人雙 worker 驗證。
 .venv/bin/python -m scripts.raffle_browser_smoke
 .venv/bin/python -m scripts.raffle_server_smoke
+
+# 繁英切換、英文票券／領卡／得獎／抽獎投影，以及中文後台與手機尺寸。
+.venv/bin/python -m scripts.i18n_browser_smoke
 
 # 動畫狀態測試；只有這項測試需另有 Node.js，服務本身不需要。
 node --test tests/bingo-animation.test.mjs tests/raffle-animation.test.mjs
