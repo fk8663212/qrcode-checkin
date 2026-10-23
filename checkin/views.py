@@ -107,6 +107,7 @@ def ticket_data():
     rate_limit('ticket:' + request.remote_addr, current_app.config['TICKET_LIMIT'])
     row = find_ticket(body().get('token'))
     data = serialize_attendee(row)
+    data['raffle_label'] = 'P%03d' % row['id']
     data.update(event_name=current_app.config['EVENT_NAME'], qr='data:image/png;base64,' + base64.b64encode(qr_png(row['token']).getvalue()).decode())
     return jsonify(data)
 

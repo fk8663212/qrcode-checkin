@@ -1,0 +1,4 @@
+{% extends 'base.html' %}
+{% block title %}{{ event_name }} · 抽獎投影{% endblock %}
+{% block scripts %}<link rel="stylesheet" href="{{ url_for('static',filename='raffle/style.css') }}"><script type="module" src="{{ url_for('static',filename='raffle/app.js') }}"></script>{% endblock %}
+{% block content %}<div id="raffle-app" data-page="display"><div class="raffle-heading"><div><p class="eyebrow">TONIGHT'S LUCKY WINNERS</p><h1 id="display-round-title">一般抽獎</h1><p id="raffle-connection" role="status">連線中…</p></div><button id="raffle-fullscreen" class="quiet" type="button">全螢幕</button></div><div id="raffle-error" class="notice error" role="alert" hidden></div><p class="muted">以卡號公告得主，請依主持人指示核對本人並領獎。</p>{% include 'raffle/animation.html' %}<section id="raffle-display-winners" class="raffle-display-winners" aria-live="polite"></section><section class="card"><h2>今晚的獎品</h2><div id="raffle-display-prizes" class="raffle-display-prizes"></div></section></div>{% endblock %}

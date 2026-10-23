@@ -59,6 +59,12 @@ def main():
                 login(host,'admin')
                 host.get_by_role('link',name='賓果主持台',exact=True).click()
                 expect(host.locator('#registration-button')).to_have_text('開放領卡')
+                expect(host.locator('#prize-count')).to_have_value('10')
+                host.get_by_label('本局獎品份數',exact=True).fill('3')
+                host.get_by_role('button',name='儲存獎品份數',exact=True).click()
+                expect(host.locator('#stat-winners')).to_have_text('0 / 3')
+                host.reload()
+                expect(host.locator('#prize-count')).to_have_value('3')
                 host.locator('#registration-button').click()
                 expect(host.locator('#registration-button')).to_have_text('關閉領卡')
 
@@ -83,6 +89,7 @@ def main():
                 player.wait_for_url('**/bingo')
                 expect(player.locator('.bingo-cell')).to_have_count(25)
                 expect(player.locator('#player-greeting')).to_have_text('整合來賓一')
+                expect(player.locator('#prize-rule')).to_have_text('本局共 3 份獎品，每人每局限得獎一次。')
                 player.locator('.bingo-cell[data-index="0"]').click()
                 expect(player.locator('#save-status')).to_have_text('已保存')
                 player.reload()
@@ -95,12 +102,25 @@ def main():
                 display = context().new_page()
                 display.goto(base+'/bingo/display')
                 expect(display.locator('#display-players')).to_have_text('1')
+                expect(display.locator('#display-winner-count')).to_have_text('0 / 3')
                 host.bring_to_front()
+                expect(host.locator('#draw-button')).to_be_enabled()
+                host.locator('#prize-count').fill('4')
+                host.wait_for_timeout(2200)  # At least one automatic state refresh must preserve the draft.
+                expect(host.locator('#prize-count')).to_have_value('4')
+                expect(host.locator('#draw-button')).to_be_disabled()
+                host.locator('#prize-count').fill('3')
+                expect(host.locator('#draw-button')).to_be_enabled()
+                host.set_viewport_size({'width':390,'height':844})
+                assert host.evaluate('document.documentElement.scrollWidth <= innerWidth')
+                host.screenshot(path=str(output/(engine+'-bingo-prizes-mobile.png')),full_page=True)
+                host.set_viewport_size({'width':1522,'height':1000})
                 host.locator('#draw-button').click()
                 expect(host.locator('#draw-stage')).to_have_class('draw-stage draw-stage-host is-rolling')
                 expect(host.locator('#draw-button')).to_be_disabled()
                 host.screenshot(path=str(output/(engine+'-bingo-host-animation.png')),full_page=True)
                 expect(host.locator('#history-count')).to_have_text('1 / 49',timeout=10000)
+                expect(host.locator('#prize-count')).to_be_disabled()
                 display.bring_to_front()
                 expect(display.locator('#display-drawn')).to_have_text('1',timeout=10000)
                 display.screenshot(path=str(output/(engine+'-bingo-display.png')),full_page=True)
@@ -136,10 +156,48 @@ def main():
                 with app.app_context():
                     assert get_db().execute('SELECT COUNT(*) FROM bingo_cards').fetchone()[0] == 1
                     assert get_db().execute('SELECT numbers FROM bingo_cards').fetchone()[0] == original['numbers']
+                host.bring_to_front()
+                host.goto(base+'/bingo/host')
+                expect(host.locator('#prize-count')).to_have_value('3')
+                expect(host.locator('#prize-count')).to_be_disabled()
+                host.locator('#reset-button').click()
+                expect(host.get_by_label('下一局獎品份數',exact=True)).to_have_value('3')
+                host.set_viewport_size({'width':390,'height':844})
+                assert host.evaluate('document.documentElement.scrollWidth <= innerWidth')
+                host.screenshot(path=str(output/(engine+'-bingo-next-game-prizes.png')),full_page=True)
+                host.locator('#cancel-reset').click()
+                with app.app_context():
+                    assert get_db().execute('SELECT COUNT(*) FROM bingo_games').fetchone()[0] == 1
+                host.locator('#reset-button').click()
+                host.get_by_label('下一局獎品份數',exact=True).fill('201')
+                host.get_by_label('請輸入「開啟下一局」',exact=True).fill('開啟下一局')
+                host.locator('#reset-submit').click()
+                expect(host.locator('#reset-dialog')).to_be_visible()
+                with app.app_context():
+                    assert get_db().execute('SELECT COUNT(*) FROM bingo_games').fetchone()[0] == 1
+                host.get_by_label('下一局獎品份數',exact=True).fill('2')
+                host.locator('#reset-submit').click()
+                expect(host.locator('#reset-dialog')).not_to_be_visible()
+                expect(host.locator('#stat-winners')).to_have_text('0 / 2')
+                expect(host.locator('#prize-count')).to_be_enabled()
+                recovered.bring_to_front()
+                expect(recovered.locator('#game-badge')).to_have_text('第 2 局',timeout=10000)
+                expect(recovered.locator('#prize-rule')).to_have_text('本局共 2 份獎品，每人每局限得獎一次。')
+                display.bring_to_front()
+                expect(display.locator('#display-winner-count')).to_have_text('0 / 2',timeout=10000)
+                host.bring_to_front()
+                host.locator('#game-select').select_option('1')
+                expect(host.locator('#prize-count')).to_have_value('3')
+                expect(host.locator('#prize-count')).to_be_disabled()
+                host.locator('#game-select').select_option('2')
+                expect(host.locator('#prize-count')).to_have_value('2')
+                expect(host.locator('#prize-count')).to_be_enabled()
                 assert all(token not in url and replacement not in url for url in urls)
                 assert not errors, errors
                 results.append({'browser':engine,'device_emulation':device,'checkin_ticket_claim':'PASS','no_claim_before_checkin':'PASS',
                                 'one_card_across_devices':'PASS','marks_persist':'PASS','animation_and_projection':'PASS',
+                                'prize_count_settings_and_lock':'PASS','draft_survives_polling':'PASS','next_game_prizes_and_history':'PASS',
+                                'prize_settings_mobile_layout':'PASS',
                                 'reissue_revokes_session_and_recovers_card':'PASS','no_token_in_http_url':'PASS','javascript_errors':errors})
             finally:
                 browser.close()

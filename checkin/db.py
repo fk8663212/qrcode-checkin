@@ -1,5 +1,6 @@
 """SQLite connections and explicit write transactions (one event, <= 200 guests)."""
 import sqlite3
+import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
@@ -62,6 +63,34 @@ CREATE TABLE IF NOT EXISTS bingo_winners (
  round INTEGER NOT NULL, position INTEGER NOT NULL, claimed_at REAL,
  PRIMARY KEY(game_id,attendee_pk), UNIQUE(game_id,position)
 );
+CREATE TABLE IF NOT EXISTS raffle_rounds (
+ id INTEGER PRIMARY KEY, title TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'waiting' CHECK(status IN ('waiting','playing','finished')),
+ allow_repeat INTEGER NOT NULL DEFAULT 0 CHECK(allow_repeat IN (0,1)),
+ include_previous INTEGER NOT NULL DEFAULT 0 CHECK(include_previous IN (0,1)),
+ exclude_bingo INTEGER NOT NULL DEFAULT 0 CHECK(exclude_bingo IN (0,1)),
+ revision INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, ended_at TEXT
+);
+CREATE TABLE IF NOT EXISTS raffle_prizes (
+ id INTEGER PRIMARY KEY, round_id INTEGER NOT NULL REFERENCES raffle_rounds(id),
+ name TEXT NOT NULL, quantity INTEGER NOT NULL CHECK(quantity BETWEEN 1 AND 200), created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS raffle_draws (
+ id INTEGER PRIMARY KEY, round_id INTEGER NOT NULL REFERENCES raffle_rounds(id),
+ prize_id INTEGER NOT NULL REFERENCES raffle_prizes(id), request_id TEXT UNIQUE NOT NULL,
+ request_payload TEXT NOT NULL, operator_id INTEGER NOT NULL REFERENCES users(id), operator_name TEXT NOT NULL,
+ drawn_at TEXT NOT NULL, candidates TEXT NOT NULL, selected TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS raffle_winners (
+ id INTEGER PRIMARY KEY, draw_id INTEGER NOT NULL REFERENCES raffle_draws(id),
+ round_id INTEGER NOT NULL REFERENCES raffle_rounds(id), prize_id INTEGER NOT NULL REFERENCES raffle_prizes(id),
+ attendee_pk INTEGER NOT NULL REFERENCES attendees(id), position INTEGER NOT NULL,
+ attendee_id TEXT NOT NULL, name TEXT NOT NULL, table_no TEXT NOT NULL,
+ claimed_at TEXT, claimed_by INTEGER REFERENCES users(id),
+ voided_at TEXT, voided_by INTEGER REFERENCES users(id), void_reason TEXT,
+ replaces_id INTEGER UNIQUE REFERENCES raffle_winners(id), UNIQUE(draw_id,attendee_pk)
+);
+CREATE INDEX IF NOT EXISTS raffle_active_winners ON raffle_winners(round_id,attendee_pk) WHERE voided_at IS NULL;
 """
 
 
@@ -87,7 +116,17 @@ def get_db():
 def init_db(app):
     db = connect(app.config['DATABASE'])
     try:
-        db.execute('PRAGMA journal_mode=WAL')
+        # Concurrent first starts can contend before schema creation. Retry only
+        # this mode negotiation; permission/corruption errors must still surface.
+        deadline = time.monotonic() + 15
+        while True:
+            try:
+                db.execute('PRAGMA journal_mode=WAL')
+                break
+            except sqlite3.OperationalError as error:
+                if ('locked' not in str(error).lower() and 'busy' not in str(error).lower()) or time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.025)
         db.executescript(SCHEMA)
     finally:
         db.close()

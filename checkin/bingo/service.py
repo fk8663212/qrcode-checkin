@@ -10,6 +10,14 @@ from ..db import audit, get_db, transaction
 from ..services import find_ticket
 from .rules import completed_lines, make_card
 
+MAX_PRIZES = 200
+
+
+def validate_prize_count(value):
+    if type(value) is not int or not 1 <= value <= MAX_PRIZES:
+        abort(400, description=f'獎品份數必須是 1～{MAX_PRIZES} 的整數。')
+    return value
+
 
 def initialize(app):
     with app.app_context(), transaction() as db:
@@ -91,6 +99,20 @@ def registration(actor, game_id, opened):
         audit(db, actor['id'], 'bingo_registration', detail=json.dumps({'game_id': game['id'], 'open': opened}))
 
 
+def prizes(actor, game_id, max_winners):
+    validate_prize_count(max_winners)
+    with transaction() as db:
+        game = current(db, game_id)
+        if game['status'] != 'waiting':
+            abort(409, description='本局已結束或開始開獎，獎品份數已鎖定；請在下一局設定。')
+        if game['max_winners'] == max_winners:
+            return
+        db.execute('UPDATE bingo_games SET max_winners=? WHERE id=?', (max_winners, game['id']))
+        bump(db)
+        audit(db, actor['id'], 'bingo_prizes', detail=json.dumps({
+            'game_id': game['id'], 'previous_max_winners': game['max_winners'], 'max_winners': max_winners}))
+
+
 def draw(actor, game_id, expected_round):
     if type(expected_round) is not int or not 0 <= expected_round < 49:
         abort(400, description='缺少有效的預期開獎回合，請重新整理。')
@@ -159,22 +181,24 @@ def claimed(actor, game_id, attendee_pk, value):
               json.dumps({'game_id': game_id}))
 
 
-def reset(actor, game_id, confirmation):
+def reset(actor, game_id, confirmation, max_winners):
     if confirmation != '開啟下一局':
         abort(400, description='請完整輸入「開啟下一局」確認。')
+    validate_prize_count(max_winners)
     with transaction() as db:
         old = current(db, game_id)
         db.execute("UPDATE bingo_games SET registration_open=0,status='finished',ended_at=COALESCE(ended_at,?) WHERE id=?",
                    (time.time(), old['id']))
-        game_id = db.execute('INSERT INTO bingo_games(title,created_at) VALUES (?,?)',
-                             (current_app.config['EVENT_NAME'], time.time())).lastrowid
+        game_id = db.execute('INSERT INTO bingo_games(title,max_winners,created_at) VALUES (?,?,?)',
+                             (current_app.config['EVENT_NAME'], max_winners, time.time())).lastrowid
         attendees = db.execute('''SELECT DISTINCT b.attendee_pk FROM bingo_cards b WHERE EXISTS
                                   (SELECT 1 FROM checkins c WHERE c.attendee_pk=b.attendee_pk AND c.undone_at IS NULL)''').fetchall()
         for row in attendees:
             db.execute('INSERT INTO bingo_cards(game_id,attendee_pk,numbers) VALUES (?,?,?)',
                        (game_id, row['attendee_pk'], json.dumps(make_card())))
         bump(db)
-        audit(db, actor['id'], 'bingo_next_game', detail=json.dumps({'previous_game': old['id'], 'game_id': game_id}))
+        audit(db, actor['id'], 'bingo_next_game', detail=json.dumps({
+            'previous_game': old['id'], 'game_id': game_id, 'max_winners': max_winners}))
         return game_id
 
 

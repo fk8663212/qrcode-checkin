@@ -130,6 +130,9 @@ def register_cli(app):
             bingo_tables = {'bingo_games', 'bingo_cards', 'bingo_draws', 'bingo_winners'}
             if tables & bingo_tables and not bingo_tables.issubset(tables):
                 raise click.ClickException('來源的賓果資料表不完整，請改用完整的一致性備份。')
+            raffle_tables = {'raffle_rounds', 'raffle_prizes', 'raffle_draws', 'raffle_winners'}
+            if tables & raffle_tables and not raffle_tables.issubset(tables):
+                raise click.ClickException('來源的抽獎資料表不完整，請改用完整的一致性備份。')
             if source.execute('PRAGMA foreign_key_check').fetchone():
                 raise click.ClickException('來源資料庫關聯驗證失敗。')
             destination = connect(app.config['DATABASE'])

@@ -91,6 +91,8 @@ def create_app(test_config=None):
     register_cli(app)
     from .bingo import init_app as init_bingo
     init_bingo(app)
+    from .raffle import init_app as init_raffle
+    init_raffle(app)
 
     @app.url_defaults
     def version_static_asset(endpoint, values):

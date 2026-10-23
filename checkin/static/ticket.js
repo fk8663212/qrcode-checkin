@@ -23,6 +23,8 @@
       document.getElementById('ticket-name').textContent = data.name;
       document.getElementById('ticket-affiliation').textContent = data.affiliation || '歡迎蒞臨晚宴';
       document.getElementById('ticket-table').textContent = data.table_no || '現場安排';
+      const raffleLabel = document.getElementById('ticket-raffle-label');
+      if (raffleLabel) raffleLabel.textContent = data.raffle_label || '—';
       document.getElementById('ticket-qr').src = data.qr;
       const status = document.getElementById('ticket-status');
       status.textContent = data.checked_in ? '已報到' : '待報到';

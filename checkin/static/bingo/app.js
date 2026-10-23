@@ -5,6 +5,7 @@ const $ = (id) => document.getElementById(id);
 const page = document.body.dataset.page;
 let state = null, csrf = document.querySelector('meta[name="csrf-token"]').content, busy = false, archiveId = null, latestGameId = null;
 let resetGameId = null;
+let prizeFormGameId = null, savedPrizeCount = null;
 let refreshing = false, refreshAgain = false, online = false, toastTimer;
 let pendingMarks = null, savingMarks = false, lastCardSignature = '', lastTicketSignature = '';
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -172,6 +173,7 @@ function latestNumber() { return state.draws.length ? state.draws[state.draws.le
 function gameStatus() { return ({waiting: '等待開獎', playing: '開獎進行中', finished: '本局已結束'})[state.game.status]; }
 
 function renderPlayer() {
+  text('prize-rule', '本局共 ' + state.game.max_winners + ' 份獎品，每人每局限得獎一次。');
   const card = state.card;
   show('claim-panel', !card); show('card-panel', !!card);
   if (!card) {
@@ -293,15 +295,27 @@ function renderWinners(id, host) {
     list.append(row);
   });
 }
+function prizeDraftPending() {
+  const input = $('prize-count');
+  return !input.validity.valid || Number(input.value) !== state.game.max_winners;
+}
 function hostButtons() {
   if (!state) return;
   const historical = state.game.id !== latestGameId;
   const rolling = drawPresenter.isAnimating();
-  $('draw-button').disabled = busy || rolling || !online || historical || state.game.status === 'finished' || !state.player_count;
+  const canEditPrizes = !historical && state.game.status === 'waiting';
+  const pendingPrizes = canEditPrizes && prizeDraftPending();
+  $('draw-button').disabled = busy || rolling || !online || historical || state.game.status === 'finished' || !state.player_count || pendingPrizes;
   text('draw-button', rolling ? '幸運號碼揭曉中…' : busy ? '處理中，請稍候…' : state.game.status === 'finished' ? '本局已結束' : '抽出下一個號碼 ✦');
   $('registration-button').disabled = busy || rolling || !online || historical || state.game.status !== 'waiting';
   $('reset-button').disabled = busy || rolling || !online || historical;
   $('game-select').disabled = busy || rolling;
+  $('prize-count').disabled = busy || rolling || !online || !canEditPrizes;
+  $('prize-save').disabled = busy || rolling || !online || !canEditPrizes || !pendingPrizes;
+  $('reset-submit').disabled = busy || rolling || !online;
+  $('reset-prize-count').disabled = busy;
+  $('reset-confirm').disabled = busy;
+  text('prize-hint', historical ? '歷史局次的獎品份數保留，無法修改。' : !canEditPrizes ? '本局已結束或開始開獎，獎品份數已鎖定；請在下一局設定。' : pendingPrizes ? '份數尚未儲存，請先按「儲存獎品份數」再開獎。' : '可設定 1～' + $('prize-count').max + ' 份，每人每局最多中獎一次；首次開獎後鎖定。');
 }
 function renderHost() {
   show('host-console', true); show('login-link', false);
@@ -314,6 +328,11 @@ function renderHost() {
     }));
   }
   select.value = String(state.game.id);
+  if (prizeFormGameId !== state.game.id || savedPrizeCount !== state.game.max_winners || state.game.status !== 'waiting') {
+    $('prize-count').value = String(state.game.max_winners);
+    prizeFormGameId = state.game.id; savedPrizeCount = state.game.max_winners;
+  }
+  text('prize-summary', state.game.max_winners + ' 份獎品');
   text('stat-players', state.player_count); text('stat-draws', state.draws.length);
   text('stat-winners', state.winners.length + ' / ' + state.game.max_winners);
   text('stat-claimed', state.winners.filter(w => w.claimed_at).length);
@@ -355,8 +374,8 @@ function renderAudit() {
 async function hostAction(path, body, message) {
   if (busy || drawPresenter.isAnimating()) return;
   busy = true; hostButtons();
-  try { await api(path, body); if (message) toast(message); }
-  catch (e) { error(e.message); toast(e.message); }
+  try { await api(path, body); if (message) toast(message); return true; }
+  catch (e) { error(e.message); toast(e.message); return false; }
   finally { busy = false; await refresh(); }
 }
 function renderDisplay() {
@@ -383,16 +402,27 @@ if (page === 'player') {
   });
 }
 if (page === 'host') {
+  $('prize-count').addEventListener('input', hostButtons);
+  $('prize-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    if (!$('prize-form').reportValidity()) return;
+    await hostAction('/api/bingo/admin/prizes', {game_id: state.game.id, max_winners: Number($('prize-count').value)}, '本局獎品份數已儲存');
+  });
   $('draw-button').addEventListener('click', () => hostAction('/api/bingo/admin/draw', {game_id: state.game.id, expected_round: state.draws.length}));
   $('registration-button').addEventListener('click', () => hostAction('/api/bingo/admin/registration', {game_id: state.game.id, open: !state.game.registration_open}));
   $('game-select').addEventListener('change', e => { archiveId = Number(e.target.value) === latestGameId ? null : Number(e.target.value); refresh(); });
-  $('reset-button').addEventListener('click', () => { resetGameId = state.game.id; $('reset-confirm').value = ''; $('reset-dialog').showModal(); });
+  $('reset-button').addEventListener('click', () => {
+    resetGameId = state.game.id; $('reset-confirm').value = '';
+    $('reset-prize-count').value = String(state.game.max_winners);
+    $('reset-dialog').showModal();
+  });
   $('cancel-reset').addEventListener('click', () => $('reset-dialog').close());
   $('reset-form').addEventListener('submit', async e => {
     e.preventDefault();
+    if (!$('reset-form').reportValidity()) return;
     if ($('reset-confirm').value !== '開啟下一局') { toast('請完整輸入「開啟下一局」。'); return; }
-    $('reset-dialog').close();
-    await hostAction('/api/bingo/admin/reset', {game_id: resetGameId, confirmation: $('reset-confirm').value}, '新局已準備好');
+    const created = await hostAction('/api/bingo/admin/reset', {game_id: resetGameId, confirmation: $('reset-confirm').value, max_winners: Number($('reset-prize-count').value)}, '新局已準備好');
+    if (created) $('reset-dialog').close();
   });
 
 }

@@ -1,6 +1,7 @@
 import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from unittest.mock import patch
 
 import pytest
@@ -165,7 +166,8 @@ def test_staff_cannot_host(app, path):
 
 
 @pytest.mark.parametrize('path,data', [('/api/bingo/admin/draw',{'game_id':1,'expected_round':0}),
-                                     ('/api/bingo/admin/reset',{'game_id':1,'confirmation':'開啟下一局'}),
+                                     ('/api/bingo/admin/reset',{'game_id':1,'confirmation':'開啟下一局','max_winners':3}),
+                                     ('/api/bingo/admin/prizes',{'game_id':1,'max_winners':3}),
                                      ('/api/bingo/admin/registration',{'game_id':1,'open':True}),
                                      ('/api/bingo/admin/claimed',{'game_id':1,'player_id':1,'claimed':True}),
                                      ('/api/bingo/admin-export',{})])
@@ -175,20 +177,93 @@ def test_admin_writes_reject_staff_anonymous_and_missing_csrf(app, path, data):
     assert client_for(app, 1).post(path, json=data).status_code == 403
 
 
-def test_twelve_same_round_candidates_persist_one_lottery_and_ten_winners(app):
+@pytest.mark.parametrize('prize_count', [1, 3, 10, 11, 200])
+def test_same_round_candidates_respect_configured_prizes_and_persist_one_lottery(app, prize_count):
+    assert action(app, 'prizes', max_winners=prize_count).status_code == 200
     players = enroll(app, 12)
     arrange(app, range(1,13), [1,2,3,4,5])
     assert post(players[0], '/api/bingo/marks', json={'game_id':1,'marks':list(range(25))}).status_code == 200
     assert host_state(app)['winners'] == []
     for number in range(1,6):
         result = draw_number(app, number)
-    assert result['game']['status'] == 'finished' and len(result['winners']) == 10
+    expected_winners = min(12, prize_count)
+    assert result['game']['max_winners'] == prize_count
+    assert result['game']['status'] == ('finished' if prize_count <= 12 else 'playing')
+    assert len(result['winners']) == expected_winners
     last = result['round_results'][-1]
     assert set(last['candidates']) == set(range(1,13))
     assert set(last['lottery_order']) == set(range(1,13))
-    assert last['selected'] == last['lottery_order'][:10]
+    assert last['selected'] == last['lottery_order'][:expected_winners]
     assert all(winner['round'] == 5 for winner in result['winners'])
     assert host_state(app)['round_results'] == result['round_results']
+    assert client_for(app).get('/api/bingo/display-state').json['game']['max_winners'] == prize_count
+    assert players[0].get('/api/bingo/state').json['game']['max_winners'] == prize_count
+
+
+def test_prize_settings_preserve_cards_and_record_changes_before_first_draw(app):
+    players = enroll(app)
+    assert post(players[0], '/api/bingo/marks', json={'game_id':1, 'marks':[0, 3]}).status_code == 200
+    original = players[0].get('/api/bingo/state').json['card']
+    assert host_state(app)['game']['max_winners'] == 10
+    for count in (3, 5, 5):
+        assert action(app, 'prizes', max_winners=count).status_code == 200
+    assert players[0].get('/api/bingo/state').json['card'] == original
+    assert host_state(create_app(dict(app.config)))['game']['max_winners'] == 5
+    assert client_for(app, 1).get('/api/bingo/admin/prizes').status_code == 405
+    with app.app_context():
+        rows = get_db().execute("SELECT actor_id,detail FROM audit_log WHERE action='bingo_prizes' ORDER BY id").fetchall()
+        assert [row['actor_id'] for row in rows] == [1, 1]
+        assert [json.loads(row['detail']) for row in rows] == [
+            {'game_id':1, 'previous_max_winners':10, 'max_winners':3},
+            {'game_id':1, 'previous_max_winners':3, 'max_winners':5}]
+
+
+@pytest.mark.parametrize('name', ['prizes', 'reset'])
+@pytest.mark.parametrize('invalid', [None, 0, -1, 201, True, False, 1.5, '3', [], {}])
+def test_invalid_prize_counts_do_not_change_or_end_game(app, name, invalid):
+    before = host_state(app)
+    response = action(app, name, max_winners=invalid, confirmation='開啟下一局')
+    assert response.status_code == 400 and '獎品份數' in response.json['error']
+    after = host_state(app)
+    assert after['games'] == before['games'] and after['revision'] == before['revision']
+
+
+@pytest.mark.parametrize('name', ['prizes', 'reset'])
+def test_prize_count_is_required(app, name):
+    assert action(app, name, confirmation='開啟下一局').status_code == 400
+    assert host_state(app)['game']['status'] == 'waiting'
+
+
+def test_prizes_lock_on_first_draw_and_old_games_cannot_be_modified(app):
+    assert action(app, 'prizes', max_winners=3).status_code == 200
+    enroll(app, 1)
+    draw_number(app, 49)
+    assert action(app, 'prizes', max_winners=2).status_code == 409
+    assert host_state(app)['game']['max_winners'] == 3
+    assert action(app, 'reset', confirmation='開啟下一局', max_winners=7).status_code == 200
+    assert action(app, 'prizes', max_winners=2).status_code == 409
+    assert host_state(app, game=1)['game']['max_winners'] == 3
+    assert host_state(app)['game']['max_winners'] == 7
+
+
+def test_parallel_prize_change_and_first_draw_use_one_transaction_order(app):
+    enroll(app, 1)
+    gate = Barrier(2)
+
+    def run(name, data):
+        gate.wait()
+        return action(app, name, **data).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        change = pool.submit(run, 'prizes', {'max_winners':3})
+        drawing = pool.submit(run, 'draw', {'expected_round':0})
+        assert drawing.result() == 200
+        changed = change.result()
+    state = host_state(app)
+    assert changed in (200, 409)
+    assert state['game']['max_winners'] == (3 if changed == 200 else 10)
+    assert state['game']['status'] == 'playing' and len(state['draws']) == 1
+    assert action(app, 'prizes', max_winners=1).status_code == 409
 
 
 def test_earlier_round_gets_priority_for_last_prize(app):
@@ -222,6 +297,7 @@ def test_full_game_exhausts_unique_numbers_and_wins_without_marks(app):
 
 
 def test_restart_next_game_and_export_preserve_history_and_one_card(app):
+    assert action(app, 'prizes', max_winners=4).status_code == 200
     player = enroll(app, 1)[0]
     arrange(app, [1], [1,2,3,4,5])
     original_numbers = player.get('/api/bingo/state').json['card']['numbers']
@@ -232,26 +308,35 @@ def test_restart_next_game_and_export_preserve_history_and_one_card(app):
     restarted = create_app(dict(app.config))
     assert host_state(restarted)['round_results'] == before['round_results']
     assert host_state(restarted)['winners'][0]['claimed_at']
-    assert action(app, 'reset', confirmation='wrong').status_code == 400
-    assert action(app, 'reset', confirmation='開啟下一局').status_code == 200
+    assert action(app, 'reset', confirmation='wrong', max_winners=2).status_code == 400
+    assert action(app, 'reset', confirmation='開啟下一局', max_winners=2).status_code == 200
     new = player.get('/api/bingo/state').json
     assert new['game']['id'] == 2 and not new['game']['registration_open']
+    assert new['game']['max_winners'] == 2
+    assert host_state(create_app(dict(app.config)))['game']['max_winners'] == 2
     assert new['card']['marks'] == [12] and new['card']['numbers'] != original_numbers
     assert len(host_state(app, game=1)['draws']) == 5
-    assert action(app, 'reset', confirmation='開啟下一局').status_code == 409
+    assert host_state(app, game=1)['game']['max_winners'] == 4
+    assert action(app, 'reset', confirmation='開啟下一局', max_winners=2).status_code == 409
     assert post(player, '/api/bingo/marks', json={'game_id':1,'marks':[0]}).status_code == 409
     exported = post(client_for(app, 1), '/api/bingo/admin-export', json={})
     assert exported.status_code == 200 and len(exported.json['games']) == 2
+    assert [game['max_winners'] for game in exported.json['games']] == [4, 2]
+    with app.app_context():
+        detail = get_db().execute("SELECT detail FROM audit_log WHERE action='bingo_next_game'").fetchone()[0]
+        assert json.loads(detail)['max_winners'] == 2
     assert all(key not in exported.json for key in ('tickets','sessions','users','settings'))
     assert ticket(app) not in exported.text
 
 
 def test_backup_restore_covers_bingo_and_revokes_player_session(app, tmp_path):
+    assert action(app, 'prizes', max_winners=7).status_code == 200
     player = enroll(app, 1)[0]
     original = player.get('/api/bingo/state').json['card']
     runner = app.test_cli_runner()
     backup = tmp_path / 'with-bingo.sqlite3'
     assert runner.invoke(args=['backup-db',str(backup)]).exit_code == 0
+    assert action(app, 'prizes', max_winners=2).status_code == 200
     draw_number(app, 49)
     result = runner.invoke(args=['restore-db',str(backup),'--confirm-stopped'])
     assert result.exit_code == 0, result.output
@@ -259,6 +344,7 @@ def test_backup_restore_covers_bingo_and_revokes_player_session(app, tmp_path):
     recovered = post(player, '/api/bingo/claim', json={'token':ticket(app)})
     assert recovered.status_code == 200 and recovered.json['card']['numbers'] == original['numbers']
     assert recovered.json['draws'] == []
+    assert recovered.json['game']['max_winners'] == 7
 
 
 def test_bingo_pages_and_assets_are_local_and_no_secret_in_public_html(app):

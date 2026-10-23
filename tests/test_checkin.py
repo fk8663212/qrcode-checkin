@@ -119,7 +119,8 @@ def test_administrative_confirmation_required(app):
 def test_public_ticket_minimal_data_and_no_roster_or_predictable_id(app):
     client = client_for(app)
     value = post(client, '/api/ticket', json={'token': ticket(app), 'attendee_pk': 2}).json
-    assert set(value) == {'name', 'affiliation', 'table_no', 'checked_at', 'checked_in', 'event_name', 'qr'}
+    assert set(value) == {'name', 'affiliation', 'table_no', 'checked_at', 'checked_in', 'event_name', 'qr', 'raffle_label'}
+    assert value['raffle_label'] == 'P001'
     assert 'token' not in value and 'attendee_id' not in value and 'operator_name' not in value
     assert post(client, '/api/ticket', json={'attendee_pk': 2}).status_code == 404
     assert client.get('/ticket/2').status_code == 404

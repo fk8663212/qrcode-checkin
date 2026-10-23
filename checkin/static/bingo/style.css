@@ -5,5 +5,6 @@
 @media(max-width:360px){.player-shell{padding-left:16px;padding-right:16px}.bingo-card,.bingo-letters{gap:6px}.card-legend{gap:8px;font-size:10px}.bingo-cell{font-size:23px}.topbar{padding-left:16px;padding-right:16px}.brand small{font-size:8px}}
 .display-winners .winner-list.has-many{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 20px}.display-winners .has-many .winner-tag{display:none}.display-winners .has-many .winner-name strong{font-size:clamp(14px,1.6vw,22px)}
 @media(max-width:760px){.display-winners .winner-list.has-many{grid-template-columns:1fr}.display-winners .has-many .winner-name strong{font-size:20px}.display-winners .has-many .winner-tag{display:block}}
+.prize-form{display:flex;align-items:flex-end;flex-wrap:wrap;gap:12px}.prize-form>div{flex:1 1 180px;max-width:260px}dialog{max-height:calc(100dvh - 36px);overflow-y:auto}
 .brand,.brand>span:last-child,.card-meta>div,.host-title>div{min-width:0}
 .brand>span:last-child,.card-meta h2,.host-title h1{overflow-wrap:anywhere}

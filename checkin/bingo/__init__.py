@@ -20,7 +20,7 @@ def player():
 @bp.get('/bingo/host')
 @require_role('admin')
 def host():
-    return render_template('bingo/host.html')
+    return render_template('bingo/host.html', prize_limit=service.MAX_PRIZES)
 
 
 @bp.get('/bingo/display')
@@ -92,12 +92,14 @@ def action(action):
         abort(400, description='缺少有效局次，請重新整理。')
     if action == 'registration':
         service.registration(g.user, game_id, data.get('open'))
+    elif action == 'prizes':
+        service.prizes(g.user, game_id, data.get('max_winners'))
     elif action == 'draw':
         service.draw(g.user, game_id, data.get('expected_round'))
     elif action == 'claimed':
         service.claimed(g.user, game_id, data.get('player_id'), data.get('claimed'))
     elif action == 'reset':
-        service.reset(g.user, game_id, data.get('confirmation'))
+        service.reset(g.user, game_id, data.get('confirmation'), data.get('max_winners'))
     else:
         abort(404)
     result = service.snapshot(admin=True)

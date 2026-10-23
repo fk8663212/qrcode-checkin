@@ -8,7 +8,15 @@
     <section id="host-console" hidden>
       <div class="host-title"><div><p class="eyebrow">LET THE GOOD TIMES ROLL</p><h1 id="host-title">導生晚宴</h1></div><label class="archive-control">檢視局次<select id="game-select" aria-label="檢視局次"></select></label></div>
       <div id="archive-banner" class="notice" hidden>正在檢視歷史紀錄。可補登領獎；抽號與領卡設定請切回最新局次。</div>
-      <div class="stats-grid"><div class="stat"><span>本局玩家</span><strong id="stat-players">0</strong><small>PLAYERS</small></div><div class="stat"><span>已開號碼</span><strong id="stat-draws">0</strong><small>DRAWN / 49</small></div><div class="stat"><span>得獎名額</span><strong id="stat-winners">0 <em>/ 10</em></strong><small>WINNERS</small></div><div class="stat"><span>已完成領獎</span><strong id="stat-claimed">0</strong><small>COLLECTED</small></div></div>
+      <div class="stats-grid"><div class="stat"><span>本局玩家</span><strong id="stat-players">0</strong><small>PLAYERS</small></div><div class="stat"><span>已開號碼</span><strong id="stat-draws">0</strong><small>DRAWN / 49</small></div><div class="stat"><span>得獎名額</span><strong id="stat-winners">— / —</strong><small>WINNERS</small></div><div class="stat"><span>已完成領獎</span><strong id="stat-claimed">0</strong><small>COLLECTED</small></div></div>
+      <section class="panel">
+        <div class="section-heading between"><h2>本局獎品</h2><span id="prize-summary" class="pill">讀取中</span></div>
+        <form id="prize-form" class="prize-form">
+          <div><label for="prize-count">本局獎品份數</label><input id="prize-count" type="number" inputmode="numeric" min="1" max="{{ prize_limit }}" step="1" aria-describedby="prize-hint" required></div>
+          <button id="prize-save" class="button gold" type="submit">儲存獎品份數</button>
+        </form>
+        <p id="prize-hint" class="hint" role="status">可設定 1～{{ prize_limit }} 份，每人每局最多中獎一次；首次開獎後鎖定。</p>
+      </section>
       <div class="host-main-grid">
         <section class="panel draw-panel"><div class="section-heading between"><h2>幸運開獎</h2><span class="pill" id="host-game-status">等待開獎</span></div><div id="draw-stage" class="draw-stage draw-stage-host" role="img" aria-label="等待開獎"><span class="draw-orbit" aria-hidden="true"></span><span class="draw-orbit draw-orbit-inner" aria-hidden="true"></span><div class="draw-number draw-value" id="host-latest" aria-hidden="true">—</div><span class="draw-spark draw-spark-one" aria-hidden="true">✦</span><span class="draw-spark draw-spark-two" aria-hidden="true">✧</span></div><p class="muted centered" id="host-round">每一次開獎，都是新的期待</p><button id="draw-button" class="button gold full draw-button">抽出下一個號碼 <span aria-hidden="true">✦</span></button><p class="hint centered">抽號立即存檔，動畫結束後同步揭曉。</p><div class="registration-row"><div><strong>新玩家領卡</strong><p class="hint" id="registration-hint">首次開獎後自動關閉</p></div><button id="registration-button" class="button small">開放領卡</button></div></section>
         <section class="panel winners-panel"><div class="section-heading between"><h2>今晚的幸運得主</h2><span class="gold-text">✧</span></div><p class="hint">依達成回合排序。相同回合的順序為系統抽選順序。</p><div id="host-winners" class="winner-list"></div></section>
@@ -20,7 +28,7 @@
     </section>
     <div id="page-error" class="error-banner" role="alert" hidden></div>
   </main>
-  <dialog id="reset-dialog"><form id="reset-form"><p class="eyebrow">A NEW ROUND</p><h2>確定要開啟下一局？</h2><p class="muted">目前局次會立即結束。舊局資料保留，保持已報到的既有玩家換發新卡。</p><label for="reset-confirm">請輸入「開啟下一局」</label><input id="reset-confirm" autocomplete="off" required><div class="dialog-actions"><button id="cancel-reset" type="button" class="button">取消</button><button class="button gold" type="submit">確認開啟下一局</button></div></form></dialog>
+  <dialog id="reset-dialog"><form id="reset-form"><p class="eyebrow">A NEW ROUND</p><h2>確定要開啟下一局？</h2><p class="muted">目前局次會立即結束。舊局資料保留，保持已報到的既有玩家換發新卡。</p><label for="reset-prize-count">下一局獎品份數</label><input id="reset-prize-count" type="number" inputmode="numeric" min="1" max="{{ prize_limit }}" step="1" aria-describedby="reset-prize-hint" required><p id="reset-prize-hint" class="hint">1～{{ prize_limit }} 份，每人每局最多中獎一次；首次開獎後鎖定。</p><label for="reset-confirm">請輸入「開啟下一局」</label><input id="reset-confirm" autocomplete="off" required><div class="dialog-actions"><button id="cancel-reset" type="button" class="button">取消</button><button id="reset-submit" class="button gold" type="submit">確認開啟下一局</button></div></form></dialog>
   <div id="print-area" class="print-area"></div><div id="toast" class="toast" role="status" hidden></div>
   <span id="draw-announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></span>
 </body>

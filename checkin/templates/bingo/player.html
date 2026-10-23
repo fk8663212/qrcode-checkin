@@ -30,7 +30,7 @@
       <p class="hint centered">點擊格子做記號。中獎由系統自動判定，無須搶按按鈕。</p>
     </section>
     <section class="panel history-panel"><div class="section-heading between"><h2>開獎紀錄</h2><span class="muted" id="history-count">0 / 49</span></div><div id="draw-history" class="ball-history"><p class="empty">好運正在路上，請等待第一個號碼。</p></div></section>
-    <section class="rules"><h2>今晚的遊戲方式</h2><ol><li>每人一張 5×5 卡片，中央星星為免費格。</li><li>號碼 1～49；橫、直或對角任一連線即可。</li><li>共 10 個名額，每人每局限得獎一次。</li><li>依開獎回合判定；同回合超額由系統隨機抽選。</li></ol></section>
+    <section class="rules"><h2>今晚的遊戲方式</h2><ol><li>每人一張 5×5 卡片，中央星星為免費格。</li><li>號碼 1～49；橫、直或對角任一連線即可。</li><li id="prize-rule">本局獎品份數載入中，每人每局限得獎一次。</li><li>依開獎回合判定；同回合超額由系統隨機抽選。</li></ol></section>
     <button id="leave-player" class="button small subtle" type="button">切換票券</button><div id="page-error" class="error-banner" role="alert" hidden></div>
   </main>
   <footer class="footer">相聚一晚，留下一點幸運。<a href="{{ url_for('bingo.display') }}">投影畫面 ↗</a></footer>

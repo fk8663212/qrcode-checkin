@@ -8,6 +8,7 @@
   <div class="ticket-heading"><span class="eyebrow">{{ event_name }}</span><span id="ticket-status" class="badge">待報到</span></div>
   <h2 id="ticket-name" class="guest-name"></h2><p id="ticket-affiliation" class="muted"></p>
   <div class="table-label">您的桌次<strong id="ticket-table"></strong></div>
+  {% if config.get('RAFFLE_INTEGRATED') %}<p class="muted">您的抽獎號碼：<strong id="ticket-raffle-label"></strong></p><p class="small muted">完成報到後，依主持人設定參加抽獎；投影以此號碼公告得主。</p>{% endif %}
   <div class="qr-wrap"><img id="ticket-qr" alt="個人報到 QR Code" width="280" height="280"></div>
   <p class="small muted">請在入口出示此 QR Code，由工作人員核對並確認。</p>
   <p id="ticket-time" class="success-text"></p>
