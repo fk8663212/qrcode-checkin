@@ -21,9 +21,22 @@
         error.status = 400; throw error;
       }
       const data = await Checkin.api('/api/ticket', { token });
+      for (const key of ['menu', 'schedule']) {
+        const link = document.getElementById(`ticket-${key}`);
+        const pending = document.getElementById(`ticket-${key}-pending`);
+        const url = data.event_links?.[`${key}_url`];
+        const available = typeof url === 'string' && /^https:\/\//i.test(url);
+        if (available) link.href = url;
+        else link.removeAttribute('href');
+        link.hidden = !available;
+        pending.hidden = available;
+      }
       document.getElementById('ticket-name').textContent = data.name;
       document.getElementById('ticket-affiliation').textContent = data.affiliation || T('歡迎蒞臨晚宴');
-      document.getElementById('ticket-table').textContent = data.table_no || T('現場安排');
+      const seat = data.seating || {mode: 'table', value: data.table_no || '現場安排', note: ''};
+      document.getElementById('ticket-seat-label').textContent = T(seat.mode === 'table' ? '您的桌次' : seat.mode === 'open' ? '座位安排' : '您的區域');
+      document.getElementById('ticket-table').textContent = T(seat.value);
+      document.getElementById('ticket-seat-note').textContent = T(seat.note || '');
       const raffleLabel = document.getElementById('ticket-raffle-label');
       if (raffleLabel) raffleLabel.textContent = data.raffle_label || '—';
       document.getElementById('ticket-qr').src = data.qr;

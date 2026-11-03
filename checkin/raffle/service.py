@@ -8,9 +8,16 @@ import unicodedata
 from flask import abort
 
 from ..db import audit, get_db, now, transaction
+from ..event_preferences import get_preferences, seating_info
 
 MAX_QUANTITY = 200
 REQUEST_ID = re.compile(r'^[A-Za-z0-9_-]{16,100}$')
+
+
+def winner_seating(row):
+    if row['seating_json']:
+        return json.loads(row['seating_json'])
+    return dict(mode='table', label='桌次', value=row['table_no'] or '現場安排', note='')
 
 
 def initialize(app):
@@ -55,7 +62,7 @@ def bump(db, round_id):
 
 
 def eligible(db, round_row):
-    return db.execute('''SELECT a.id,a.attendee_id,a.name,a.table_no FROM attendees a
+    return db.execute('''SELECT a.id,a.attendee_id,a.name,a.table_no,a.grade,a.seating_area FROM attendees a
         WHERE EXISTS (SELECT 1 FROM checkins c WHERE c.attendee_pk=a.id AND c.undone_at IS NULL)
         AND (? OR NOT EXISTS (SELECT 1 FROM raffle_winners w WHERE w.attendee_pk=a.id
                               AND w.round_id=? AND w.voided_at IS NULL))
@@ -165,11 +172,12 @@ def draw(actor, round_id, data, replacement=False):
         if original:
             db.execute('UPDATE raffle_winners SET voided_at=?,voided_by=?,void_reason=? WHERE id=?',
                        (stamp, actor['id'], reason, original_id))
+        preferences = get_preferences()
         for position, attendee in enumerate(selected, 1):
             db.execute('''INSERT INTO raffle_winners(draw_id,round_id,prize_id,attendee_pk,position,
-                attendee_id,name,table_no,replaces_id) VALUES (?,?,?,?,?,?,?,?,?)''',
+                attendee_id,name,table_no,replaces_id,seating_json) VALUES (?,?,?,?,?,?,?,?,?,?)''',
                 (draw_id, round_id, prize_id, attendee['id'], position, attendee['attendee_id'],
-                 attendee['name'], attendee['table_no'], original_id))
+                 attendee['name'], attendee['table_no'], original_id, json.dumps(seating_info(attendee, preferences), ensure_ascii=False)))
         db.execute("UPDATE raffle_rounds SET status='playing' WHERE id=?", (round_id,))
         bump(db, round_id)
         audit(db, actor['id'], 'raffle_redraw' if replacement else 'raffle_draw',
@@ -217,6 +225,8 @@ def snapshot(admin=False, round_id=None):
             WHERE w.round_id=? ORDER BY w.id DESC''', (rid,)):
             if admin:
                 value = dict(row)
+                value['seating'] = winner_seating(value)
+                value.pop('seating_json', None)
             else:
                 if row['voided_at']:
                     continue

@@ -4,6 +4,7 @@ import {createRafflePresenter} from './animation.mjs';
   const root = document.getElementById('raffle-app');
   const host = root.dataset.page === 'host';
   const $ = id => document.getElementById(id);
+  const seatingText = winner => winner.seating ? winner.seating.value + (winner.seating.mode === 'table' && winner.table_no ? ' 桌' : '') : (winner.table_no || '未安排') + ' 桌';
   const T = (source, values = {}) => window.GuestUI ? GuestUI.t(source, values) : source.replace(/\{([a-z_]+)\}/g, (match, key) => Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : match);
   let state, archive = null, online = false, busy = false, refreshing = false;
   let configSignature = '', prizeSignature = '', winnerSignature = '', displaySignature = '', redrawWinner, roundAtDialog;
@@ -76,7 +77,7 @@ import {createRafflePresenter} from './animation.mjs';
     $('animation-prize').textContent=draw.prize_name;
     $('animation-title').textContent=T('恭喜幸運得主！');
     $('raffle-reels').hidden=true;$('animation-winners').hidden=false;
-    $('animation-winners').replaceChildren(...winners.slice(0,12).map(w => el('strong',host ? w.name+' · '+(w.table_no || '未安排')+' 桌' : w.card_label)));
+    $('animation-winners').replaceChildren(...winners.slice(0,12).map(w => el('strong',host ? w.name+' · '+seatingText(w) : w.card_label)));
     $('animation-hint').textContent=T('已揭曉 {count} 位得主{detail}', {count: winners.length, detail: T(winners.length>12 ? ' · 完整名單請見下方' : ' · 請核對本人後領獎')});
     announceResult();controls();
   }
@@ -153,7 +154,7 @@ import {createRafflePresenter} from './animation.mjs';
       const result = await Checkin.api('/api/raffle/admin/'+pending.action, pending.data);
       savePending(null);
       const winners = result.winners.filter(w => w.draw_id === result.result.draw_id);
-      confirmedResult = winners.length ? '✓ 已確認抽出：'+winners.map(w => w.name+' · '+(w.table_no || '未安排')+' 桌 · '+w.prize_name).join('、') : '✓ 伺服器已確認原抽獎紀錄，請至對應歷史輪次查看。';
+      confirmedResult = winners.length ? '✓ 已確認抽出：'+winners.map(w => w.name+' · '+seatingText(w)+' · '+w.prize_name).join('、') : '✓ 伺服器已確認原抽獎紀錄，請至對應歷史輪次查看。';
       presenter.update(result,{elapsedMs:performance.now()-started});
       if(!presenter.isAnimating()){
         if($('raffle-animation').classList.contains('is-rolling')){stopReels();$('raffle-animation').hidden=true;}
@@ -219,7 +220,7 @@ import {createRafflePresenter} from './animation.mjs';
     if (!state.winners.length) {list.append(el('p','尚無得獎紀錄。','raffle-empty'));return;}
     for (const winner of state.winners) {
       const row=el('article',undefined,'raffle-winner'+(winner.voided_at ? ' voided' : ''));row.dataset.winnerId=winner.id;
-      const info=el('div');info.append(el('strong',winner.name),el('p',winner.prize_name+' · '+winner.attendee_id+' · '+(winner.table_no || '未安排')+' 桌'),el('p','紀錄 #'+winner.id+' · '+Checkin.time(winner.drawn_at)+' · '+winner.operator_name,'muted'));
+      const info=el('div');info.append(el('strong',winner.name),el('p',winner.prize_name+' · '+winner.attendee_id+' · '+seatingText(winner)),el('p','紀錄 #'+winner.id+' · '+Checkin.time(winner.drawn_at)+' · '+winner.operator_name,'muted'));
       if(winner.replaces_id)info.append(el('p','替補原紀錄 #'+winner.replaces_id,'muted'));
       if(winner.voided_at)info.append(el('p','已撤銷 · '+winner.void_reason+' · '+Checkin.time(winner.voided_at),'muted'));
       else {

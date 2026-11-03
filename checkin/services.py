@@ -1,5 +1,3 @@
-import csv
-import io
 import json
 import re
 import secrets
@@ -8,11 +6,14 @@ import time
 from flask import abort, current_app
 
 from .db import audit, bump_roster, get_db, now, transaction
+from .event_preferences import get_preferences, seating_info
 
 TOKEN_RE = re.compile(r'^[A-Za-z0-9_-]{43}$')
 USERNAME_RE = re.compile(r'^[A-Za-z0-9_.-]{3,40}$')
-FIELDS = ('attendee_id', 'name', 'affiliation', 'table_no')
-LIMITS = {'attendee_id': 64, 'name': 100, 'affiliation': 120, 'table_no': 30}
+FIELDS = ('attendee_id', 'name', 'affiliation', 'table_no', 'grade', 'title', 'email', 'seating_area')
+EXTRA_FIELDS = ('grade', 'title', 'email', 'seating_area')
+LIMITS = {'attendee_id': 64, 'name': 100, 'affiliation': 120, 'table_no': 30,
+          'grade': 30, 'title': 80, 'email': 254, 'seating_area': 50}
 ATTENDEE_QUERY = '''SELECT a.*, c.id AS checkin_id, c.checked_at, c.operator_name,
                    t.id AS ticket_id, t.token
                    FROM attendees a LEFT JOIN checkins c ON c.attendee_pk=a.id AND c.undone_at IS NULL
@@ -20,12 +21,14 @@ ATTENDEE_QUERY = '''SELECT a.*, c.id AS checkin_id, c.checked_at, c.operator_nam
 
 
 def validate_attendee(data):
-    values = {field: str(data.get(field, '')).strip() for field in FIELDS}
+    values = {field: str(data.get(field, '')).strip() for field in FIELDS if field not in EXTRA_FIELDS or field in data}
     for field, value in values.items():
         if field in ('attendee_id', 'name') and not value:
             raise ValueError(f'{field} 為必填。')
         if len(value) > LIMITS[field] or any(ord(char) < 32 for char in value):
             raise ValueError(f'{field} 最多 {LIMITS[field]} 字，不可含控制字元。')
+    if values.get('email') and not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', values['email']):
+        raise ValueError('email 請填寫完整電子郵件地址，或留白。')
     return values
 
 
@@ -38,8 +41,8 @@ def new_ticket(db, attendee_pk):
 def insert_attendee(db, data):
     if db.execute('SELECT COUNT(*) FROM attendees').fetchone()[0] >= 200:
         abort(409, description='名冊最多 200 人，請先核對資料。')
-    cursor = db.execute('INSERT INTO attendees(attendee_id,name,affiliation,table_no,created_at) VALUES (?,?,?,?,?)',
-                        tuple(data[field] for field in FIELDS) + (now(),))
+    cursor = db.execute('INSERT INTO attendees(' + ','.join(FIELDS) + ',created_at) VALUES (' + ','.join('?' for _ in range(len(FIELDS) + 1)) + ')',
+                        tuple(data.get(field, '') for field in FIELDS) + (now(),))
     new_ticket(db, cursor.lastrowid)
     return cursor.lastrowid
 
@@ -68,9 +71,16 @@ def find_ticket(token):
 def serialize_attendee(row, staff=False):
     value = {key: row[key] for key in ('name', 'affiliation', 'table_no', 'checked_at')}
     value['checked_in'] = row['checked_at'] is not None
+    value['seating'] = seating_info(row)
     if staff:
         value.update(id=row['id'], attendee_id=row['attendee_id'], operator_name=row['operator_name'])
     return value
+
+
+def update_attendee(db, attendee_pk, data):
+    fields = [field for field in FIELDS if field in data]
+    db.execute('UPDATE attendees SET ' + ','.join(field + '=?' for field in fields) + ' WHERE id=?',
+               tuple(data[field] for field in fields) + (attendee_pk,))
 
 
 def search_attendees(query='', status='all'):
@@ -109,31 +119,25 @@ def check_in(actor, request_id, token=None, attendee_pk=None):
     return result, True
 
 
-def parse_csv(raw):
-    errors, rows, seen = [], [], set()
-    try:
-        text = raw.decode('utf-8-sig')
-        reader = csv.DictReader(io.StringIO(text, newline=''), strict=True)
-        headers = reader.fieldnames or []
-        if len(headers) != len(set(headers)) or not {'attendee_id', 'name'}.issubset(headers) or set(headers) - set(FIELDS):
-            return [], ['欄名需包含 attendee_id、name，可選 affiliation、table_no，不能重複或有其他欄名。']
-        for number, item in enumerate(reader, 2):
-            if len(rows) >= 200:
-                errors.append('單次 CSV 不得超過 200 筆。')
-                break
-            if None in item or any(value is None for value in item.values()):
-                errors.append(f'第 {number} 列：欄位數與標題不符。')
-                continue
-            try:
-                row = validate_attendee(item)
-                if row['attendee_id'] in seen:
-                    raise ValueError('attendee_id 在檔案內重複。')
-                seen.add(row['attendee_id'])
-                rows.append(row)
-            except ValueError as error:
-                errors.append(f'第 {number} 列：{error}')
-    except (UnicodeDecodeError, csv.Error):
-        errors.append('無法讀取檔案，請另存為 UTF-8 CSV。')
+def parse_csv(raw, profile='auto', filename='roster.csv'):
+    from .roster_import import read_roster
+    items, errors = read_roster(raw, filename, profile)
+    rows, seen = [], set()
+    preferences = get_preferences()
+    for number, item in items:
+        try:
+            is_campus = item.pop('_profile') == 'campus'
+            if 'affiliation' not in item:
+                item['affiliation'] = preferences['default_affiliation']
+            row = validate_attendee(item)
+            if is_campus and 'table_no' not in item:
+                row.pop('table_no')
+            if row['attendee_id'] in seen:
+                raise ValueError('學號／attendee_id 在檔案內重複。')
+            seen.add(row['attendee_id'])
+            rows.append(row)
+        except ValueError as error:
+            errors.append(f'第 {number} 列：{error}')
     if not rows:
         errors.append('沒有可匯入的資料。')
     existing = {row['attendee_id'] for row in get_db().execute('SELECT attendee_id FROM attendees')}
@@ -142,8 +146,8 @@ def parse_csv(raw):
     return rows, errors
 
 
-def preview_import(raw, user_id):
-    rows, errors = parse_csv(raw)
+def preview_import(raw, user_id, profile='auto', filename='roster.csv'):
+    rows, errors = parse_csv(raw, profile, filename)
     preview_id = secrets.token_urlsafe(24)
     with transaction() as db:
         version = db.execute("SELECT value FROM settings WHERE key='roster_version'").fetchone()[0]
@@ -172,8 +176,7 @@ def apply_import(preview_id, actor_id):
         for row in rows:
             found = db.execute('SELECT id FROM attendees WHERE attendee_id=?', (row['attendee_id'],)).fetchone()
             if found:
-                db.execute('UPDATE attendees SET name=?,affiliation=?,table_no=? WHERE id=?',
-                           (row['name'], row['affiliation'], row['table_no'], found['id']))
+                update_attendee(db, found['id'], {key: value for key, value in row.items() if key != 'attendee_id'})
             else:
                 insert_attendee(db, row)
         db.execute('UPDATE import_previews SET consumed_at=? WHERE id=?', (now(), preview_id))

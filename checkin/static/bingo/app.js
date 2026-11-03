@@ -185,6 +185,7 @@ function renderPlayer() {
   }
   text('card-label', card.card_label + ' · YOUR LUCKY CARD');
   text('player-greeting', T('{name}的賓果卡', {name: card.name})); text('game-badge', T('第 {game} 局', {game: state.game.id}));
+  text('player-seating', card.seating ? T(card.seating.label) + ' · ' + T(card.seating.value) + (card.seating.note ? ' · ' + T(card.seating.note) : '') : '');
   text('player-latest', latestNumber());
   text('player-round', state.draws.length ? T('第 {round} 回合 · {status}', {round: state.draws.length, status: gameStatus()}) : T('等待主持人抽號'));
   if (pendingMarks && pendingMarks.cardId !== card.id) {
@@ -284,7 +285,8 @@ function renderWinners(id, host) {
     const row = node('div', 'winner-row');
     row.dataset.playerId = String(w.player_id);
     const info = node('div', 'winner-name');
-    info.append(node('strong', '', host ? w.name : T('幸運來賓')), node('small', '', host ? w.card_label + (w.table_no ? ' · ' + w.table_no + ' 桌' : '') + ' · 第 ' + w.round + ' 回合連線' : T('{card} · 第 {round} 回合連線', {card: w.card_label, round: w.round})));
+    const seat = w.seating ? w.seating.value + (w.seating.mode === 'table' && w.table_no ? ' 桌' : '') : w.table_no ? w.table_no + ' 桌' : '';
+    info.append(node('strong', '', host ? w.name : T('幸運來賓')), node('small', '', host ? w.card_label + (seat ? ' · ' + seat : '') + ' · 第 ' + w.round + ' 回合連線' : T('{card} · 第 {round} 回合連線', {card: w.card_label, round: w.round})));
     row.append(node('span', 'winner-rank', String(w.position).padStart(2, '0')), info);
     if (host) {
       const button = node('button', 'button small' + (w.claimed_at ? ' claimed' : ''), w.claimed_at ? '已領獎 ✓' : '標記領獎');
@@ -346,6 +348,7 @@ function renderHost() {
   hostButtons(); renderWinners('host-winners', true); renderTickets(); renderAudit();
 }
 function renderTickets() {
+  text('ticket-seat-heading', state.seating_label || '桌次');
   text('ticket-summary', '本局共 ' + state.players.length + ' 位來賓已領卡');
   const signature = JSON.stringify(state.players);
   if (signature === lastTicketSignature) return;
@@ -353,7 +356,7 @@ function renderTickets() {
   const table = $('ticket-table'); table.replaceChildren();
   state.players.forEach(t => {
     const row = node('tr');
-    row.append(node('td', '', 'P' + String(t.id).padStart(3,'0')), node('td', '', t.name), node('td', '', t.table_no || '未安排'), node('td', '', t.qualified_round || '尚未連線'));
+    row.append(node('td', '', 'P' + String(t.id).padStart(3,'0')), node('td', '', t.name), node('td', '', t.seating?.value || t.table_no || '未安排'), node('td', '', t.qualified_round || '尚未連線'));
     table.append(row);
   });
 }

@@ -5,6 +5,9 @@
 instance
 backups
 test-results
+outputs
+exports
+examples/tickets.csv
 .pytest_cache
 __pycache__
 **/__pycache__

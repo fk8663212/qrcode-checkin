@@ -1,9 +1,19 @@
 {% extends 'base.html' %}
 {% block content %}
-<section class="page-heading"><p class="eyebrow">GUEST LIST</p><h1>匯入名冊</h1><p class="muted">先預覽、核對，再確認匯入。以參加者編號識別，同名者可使用不同編號。</p></section>
-<form method="post" enctype="multipart/form-data" class="card stack"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>UTF-8 CSV（1 MB 以下，最多 200 人）<input type="file" name="file" accept=".csv,text/csv" required></label><p class="small muted">必填欄名：attendee_id、name；選填：affiliation、table_no。重匯會更新名冊欄位（空白會清空選填資料），保留票券及報到紀錄。</p><button type="submit" class="primary">上傳並預覽</button></form>
+<section class="page-heading"><p class="eyebrow">GUEST LIST</p><h1>匯入名冊</h1><p class="muted">先預覽、核對，再確認匯入。以學號／固定參加者編號識別，同名者可使用不同編號。</p></section>
+<form method="post" enctype="multipart/form-data" class="card stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>匯入格式<select name="profile"><option value="auto">自動辨識</option><option value="campus">校園名冊（中文欄名）</option><option value="standard">一般活動（英文欄名）</option></select></label>
+  <label>Excel .xlsx／UTF-8 CSV（1 MB 以下，最多 200 人）<input type="file" name="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" required></label>
+  <p class="small muted">校園欄名：姓名、年級、學號、職稱、電子郵件地址。姓名、學號必填；無學號的來賓請在學號欄填主辦方固定編號，例如 GUEST-001。Email 可留白，不作為身分識別。</p>
+  <p class="small muted">一般欄名：attendee_id、name，選填 affiliation、table_no、grade、title、email、seating_area。年級／職稱／Email／區域未提供欄位時保留既有值；有提供但留白則清空。票券及報到紀錄保留。</p>
+  <p class="small muted">Excel 僅保留一張名冊工作表，不使用公式。學號若有前導 0，請設為文字，並在預覽確認完整編號。</p>
+  <div class="actions wrap"><a href="{{ url_for('web.import_template', profile='campus', extension='xlsx') }}">下載校園 Excel 範例</a><a href="{{ url_for('web.import_template', profile='campus', extension='csv') }}">校園 CSV 範例</a><a href="{{ url_for('web.import_template', profile='standard', extension='csv') }}">一般 CSV 範例</a></div>
+  <p class="small muted">目前模板：{{ roster_profiles[event_preferences.roster_profile] }} · 座位方式：{{ seating_modes[event_preferences.seating_mode] }}。<a href="{{ url_for('web.event_settings') }}">活動設定 →</a></p>
+  <button type="submit" class="primary">上傳並預覽</button>
+</form>
 {% if preview %}<section class="card"><h2>匯入預覽</h2><div class="preview-counts"><span>新增 <strong>{{ preview.added }}</strong> 人</span><span>更新 <strong>{{ preview.updated }}</strong> 人</span><span>錯誤 <strong>{{ preview.errors|length }}</strong> 項</span></div>
 {% if preview.errors %}<div class="notice error"><strong>尚未匯入，請修正檔案後重新上傳。</strong><ul>{% for error in preview.errors %}<li>{{ error }}</li>{% endfor %}</ul></div>{% else %}<p class="notice">以下資料尚未寫入名冊。預覽有效 15 分鐘。</p>{% endif %}
-<div class="table-scroll"><table><thead><tr><th>attendee_id</th><th>姓名</th><th>單位</th><th>桌次</th></tr></thead><tbody>{% for row in preview.rows %}<tr><td>{{ row.attendee_id }}</td><td>{{ row.name }}</td><td>{{ row.affiliation }}</td><td>{{ row.table_no }}</td></tr>{% endfor %}</tbody></table></div>
+<div class="table-scroll"><table><thead><tr><th>學號／編號</th><th>姓名</th><th>年級</th><th>職稱</th><th>Email</th><th>單位</th><th>座位資訊</th></tr></thead><tbody>{% for row in preview.rows %}<tr><td>{{ row.attendee_id }}</td><td>{{ row.name }}</td><td>{{ row.get('grade', '保留既有值') }}</td><td>{{ row.get('title', '保留既有值') }}</td><td>{{ row.get('email', '保留既有值') }}</td><td>{{ row.affiliation }}</td><td>{% if event_preferences.seating_mode == 'table' %}{{ row.get('table_no', '保留既有值／現場安排') }}{% elif event_preferences.seating_mode == 'open' %}自由入座{% else %}{{ row.get('seating_area') or (row.get('grade') if event_preferences.seating_mode == 'grade' else '') or '確認後依既有資料／現場安排' }} · 區域內自由入座{% endif %}</td></tr>{% endfor %}</tbody></table></div>
 {% if not preview.errors %}<form method="post" action="{{ url_for('web.import_confirm') }}" class="top-space"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="preview_id" value="{{ preview.id }}"><button class="primary" type="submit">確認匯入 {{ preview.rows|length }} 筆</button></form>{% endif %}</section>{% endif %}
 {% endblock %}

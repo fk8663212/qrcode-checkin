@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block container_class %}narrow{% endblock %}
+{% block content %}
+<section class="page-heading"><p class="eyebrow">EVENT SETTINGS</p><h1>活動模板與座位方式</h1>
+  <p class="muted">名冊模板決定欄位名稱，座位方式決定票券、報到及統計的呈現。</p>
+  <a href="{{ url_for('web.admin') }}">← 返回管理總覽</a>
+</section>
+<form method="post" class="card stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>名冊模板<select name="roster_profile" id="roster-profile">{% for key,label in roster_profiles.items() %}<option value="{{ key }}" {% if preferences.get('roster_profile') == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  <p class="small muted">校園名冊可直接使用「姓名、年級、學號、職稱、電子郵件地址」。學號作為名冊識別編號，票券仍使用隨機憑證。</p>
+  <label>座位方式<select name="seating_mode" id="seating-mode">{% for key,label in seating_modes.items() %}<option value="{{ key }}" {% if preferences.get('seating_mode') == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  <p class="small muted">依年級分區時，同年級使用同一區，區域內自由入座；如名冊另填「區域」，則優先使用指定區域。切換顯示不會清除原桌次或區域資料。</p>
+  <label>預設單位／系所<input name="default_affiliation" value="{{ preferences.get('default_affiliation', '') }}" maxlength="120" placeholder="全體同系時可統一填寫"></label>
+  <p class="small muted">套用於之後匯入時沒有單位欄位的資料，亦作為新增來賓的預填值。修改此處不會直接改寫既有名冊。</p>
+  <button class="primary" type="submit">儲存活動設定</button>
+</form>
+{% endblock %}

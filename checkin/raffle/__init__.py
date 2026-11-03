@@ -80,9 +80,9 @@ def export(kind):
                 JOIN raffle_rounds r ON r.id=w.round_id JOIN raffle_prizes p ON p.id=w.prize_id
                 JOIN raffle_draws d ON d.id=w.draw_id ORDER BY w.id''').fetchall()
             response = csv_response('raffle-winners.csv',
-                ['輪次','獎品','紀錄編號','參加者編號','姓名','桌次','狀態','抽出時間','操作者','領獎時間','撤銷時間','重抽原因','替補原紀錄'],
+                ['輪次','獎品','紀錄編號','參加者編號','姓名','座位資訊','狀態','抽出時間','操作者','領獎時間','撤銷時間','重抽原因','替補原紀錄'],
                 [[row['title'],row['prize_name'],row['id'],row['attendee_id'],row['name'],
-                  row['table_no'],'已撤銷' if row['voided_at'] else '已領獎' if row['claimed_at'] else '待領獎',
+                  service.winner_seating(row)['value'],'已撤銷' if row['voided_at'] else '已領獎' if row['claimed_at'] else '待領獎',
                   local_time(row['drawn_at']),row['operator_name'],local_time(row['claimed_at']),
                   local_time(row['voided_at']),row['void_reason'],row['replaces_id']] for row in rows])
     finally:

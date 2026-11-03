@@ -14,7 +14,9 @@ CREATE TABLE IF NOT EXISTS users (
 );
 CREATE TABLE IF NOT EXISTS attendees (
  id INTEGER PRIMARY KEY, attendee_id TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
- affiliation TEXT NOT NULL DEFAULT '', table_no TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
+ affiliation TEXT NOT NULL DEFAULT '', table_no TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,
+ grade TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '',
+ seating_area TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS tickets (
  id INTEGER PRIMARY KEY, attendee_pk INTEGER NOT NULL REFERENCES attendees(id),
@@ -39,6 +41,15 @@ CREATE TABLE IF NOT EXISTS import_previews (
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
 INSERT OR IGNORE INTO settings VALUES ('roster_version', 0);
+CREATE TABLE IF NOT EXISTS event_links (
+ id INTEGER PRIMARY KEY CHECK(id=1), menu_url TEXT NOT NULL DEFAULT '', schedule_url TEXT NOT NULL DEFAULT ''
+);
+INSERT OR IGNORE INTO event_links(id) VALUES (1);
+CREATE TABLE IF NOT EXISTS event_preferences (
+ id INTEGER PRIMARY KEY CHECK(id=1), roster_profile TEXT NOT NULL DEFAULT 'standard',
+ seating_mode TEXT NOT NULL DEFAULT 'table', default_affiliation TEXT NOT NULL DEFAULT ''
+);
+INSERT OR IGNORE INTO event_preferences(id) VALUES (1);
 CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, expires INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS bingo_games (
  id INTEGER PRIMARY KEY, title TEXT NOT NULL,
@@ -88,7 +99,8 @@ CREATE TABLE IF NOT EXISTS raffle_winners (
  attendee_id TEXT NOT NULL, name TEXT NOT NULL, table_no TEXT NOT NULL,
  claimed_at TEXT, claimed_by INTEGER REFERENCES users(id),
  voided_at TEXT, voided_by INTEGER REFERENCES users(id), void_reason TEXT,
- replaces_id INTEGER UNIQUE REFERENCES raffle_winners(id), UNIQUE(draw_id,attendee_pk)
+ replaces_id INTEGER UNIQUE REFERENCES raffle_winners(id), seating_json TEXT NOT NULL DEFAULT '',
+ UNIQUE(draw_id,attendee_pk)
 );
 CREATE INDEX IF NOT EXISTS raffle_active_winners ON raffle_winners(round_id,attendee_pk) WHERE voided_at IS NULL;
 """
@@ -128,6 +140,16 @@ def init_db(app):
                     raise
                 time.sleep(0.025)
         db.executescript(SCHEMA)
+        # Existing deployments keep their IDs, tokens and history. Serialize
+        # additive migrations so simultaneous workers cannot add a column twice.
+        db.execute('BEGIN IMMEDIATE')
+        for table, fields in {'attendees': ('grade', 'title', 'email', 'seating_area'),
+                              'raffle_winners': ('seating_json',)}.items():
+            columns = {row['name'] for row in db.execute('PRAGMA table_info(' + table + ')')}
+            for field in fields:
+                if field not in columns:
+                    db.execute(f"ALTER TABLE {table} ADD COLUMN {field} TEXT NOT NULL DEFAULT ''")
+        db.commit()
     finally:
         db.close()
 

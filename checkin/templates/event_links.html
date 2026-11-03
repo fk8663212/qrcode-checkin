@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block container_class %}narrow{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <p class="eyebrow">EVENT LINKS</p>
+  <h1>菜單與活動流程</h1>
+  <p class="muted">先預留票券上的按鈕，資料準備好後再貼上連結。</p>
+  <a href="{{ url_for('web.admin') }}">← 返回管理總覽</a>
+</section>
+<form method="post" class="card stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% for key, label in [('menu_url', '晚宴菜單'), ('schedule_url', '活動流程')] %}
+  <label for="{{ key }}">{{ label }}連結
+    <input id="{{ key }}" name="{{ key }}" type="url" value="{{ links.get(key, '') }}" maxlength="2048" placeholder="https://" inputmode="url" autocomplete="off" spellcheck="false" aria-describedby="{{ key }}-hint">
+  </label>
+  <p id="{{ key }}-hint" class="small muted">留白會顯示「即將公布」；填入 HTTPS 網址後即可從票券開啟。</p>
+  {% endfor %}
+  <p class="small muted">可使用網頁、PDF 或雲端文件分享連結，請先確認參加者有權限開啟。這些連結會提供給所有持有有效票券的參加者。</p>
+  <button type="submit" class="primary">儲存活動連結</button>
+  <p class="small muted">儲存後，參加者重新整理票券或按「更新報到狀態」即可查看。已發出的票券連結可繼續使用。</p>
+</form>
+{% endblock %}

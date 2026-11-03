@@ -9,6 +9,9 @@ __pycache__/
 instance/
 backups/
 test-results/
+outputs/
+exports/
+/examples/tickets.csv
 *.sqlite3*
 *.db*
 .DS_Store

@@ -8,6 +8,7 @@ from flask import abort, current_app, session
 
 from ..db import audit, get_db, transaction
 from ..services import find_ticket
+from ..event_preferences import get_preferences, seating_info
 from .rules import completed_lines, make_card
 
 MAX_PRIZES = 200
@@ -206,13 +207,14 @@ def snapshot(attendee_pk=None, admin=False, game_id=None):
     db = get_db()
     db.execute('BEGIN')
     try:
+        preferences = get_preferences()
         game = db.execute('SELECT * FROM bingo_games WHERE id=?', (game_id,)).fetchone() if game_id else current(db)
         if not game:
             abort(404, description='查無這一局。')
         gid = game['id']
         draws = [dict(row) for row in db.execute('SELECT round,number,drawn_at FROM bingo_draws WHERE game_id=? ORDER BY round', (gid,))]
         winners = []
-        for row in db.execute('''SELECT w.*,a.name,a.table_no FROM bingo_winners w JOIN attendees a ON a.id=w.attendee_pk
+        for row in db.execute('''SELECT w.*,a.name,a.table_no,a.grade,a.seating_area FROM bingo_winners w JOIN attendees a ON a.id=w.attendee_pk
                                  WHERE w.game_id=? ORDER BY w.position''', (gid,)):
             label = 'P%03d' % row['attendee_pk']
             value = dict(player_id=row['attendee_pk'], card_label=label, round=row['round'], position=row['position'], claimed_at=row['claimed_at'])
@@ -220,6 +222,7 @@ def snapshot(attendee_pk=None, admin=False, game_id=None):
             value['name'] = row['name'] if admin else '幸運來賓'
             if admin:
                 value['table_no'] = row['table_no']
+                value['seating'] = seating_info(row, preferences)
             winners.append(value)
         data = dict(game=dict(game), draws=draws, winners=winners,
                     player_count=db.execute('''SELECT COUNT(*) FROM bingo_cards b WHERE b.game_id=? AND EXISTS
@@ -227,19 +230,21 @@ def snapshot(attendee_pk=None, admin=False, game_id=None):
                     revision=setting(db, 'bingo_revision'), scope=setting(db, 'bingo_scope'), server_time=time.time(),
                     demo=current_app.config['CHECKIN_ENV'] == 'demo')
         if attendee_pk:
-            row = db.execute('''SELECT b.*,a.name,a.table_no FROM bingo_cards b JOIN attendees a ON a.id=b.attendee_pk
+            row = db.execute('''SELECT b.*,a.name,a.table_no,a.grade,a.seating_area FROM bingo_cards b JOIN attendees a ON a.id=b.attendee_pk
                                 WHERE b.game_id=? AND b.attendee_pk=?''', (gid, attendee_pk)).fetchone()
             if row:
                 card = {key: row[key] for key in ('id', 'game_id', 'name', 'table_no', 'qualified_round')}
+                card['seating'] = seating_info(row, preferences)
                 card.update(numbers=json.loads(row['numbers']), marks=json.loads(row['marks']), player_id=attendee_pk, card_label='P%03d' % attendee_pk)
                 card['lines'] = completed_lines(card['numbers'], {draw['number'] for draw in draws})
                 data['card'] = card
         if admin:
+            data['seating_label'] = '桌次' if preferences['seating_mode'] == 'table' else '座位安排' if preferences['seating_mode'] == 'open' else '區域'
             data['games'] = [dict(row) for row in db.execute('SELECT * FROM bingo_games ORDER BY id DESC')]
             data['round_results'] = [{**dict(row), **{key: json.loads(row[key]) for key in ('candidates','lottery_order','selected')}}
                                      for row in db.execute('SELECT * FROM bingo_draws WHERE game_id=? ORDER BY round', (gid,))]
-            data['players'] = [dict(id=row['attendee_pk'], name=row['name'], table_no=row['table_no'], qualified_round=row['qualified_round'])
-                               for row in db.execute('''SELECT b.attendee_pk,a.name,a.table_no,b.qualified_round FROM bingo_cards b
+            data['players'] = [dict(id=row['attendee_pk'], name=row['name'], table_no=row['table_no'], qualified_round=row['qualified_round'], seating=seating_info(row, preferences))
+                               for row in db.execute('''SELECT b.attendee_pk,a.name,a.table_no,a.grade,a.seating_area,b.qualified_round FROM bingo_cards b
                                                          JOIN attendees a ON a.id=b.attendee_pk WHERE b.game_id=? ORDER BY b.attendee_pk''', (gid,))]
         return data
     finally:

@@ -112,8 +112,12 @@ def create_app(test_config=None):
 
     @app.context_processor
     def shared():
+        from .event_preferences import get_preferences, ROSTER_PROFILES, SEATING_MODES, seating_info
+        preferences = get_preferences()
         return {'event_name': app.config['EVENT_NAME'], 'event_info': event_info(app.config),
-                'is_demo': app.config['CHECKIN_ENV'] == 'demo'}
+                'is_demo': app.config['CHECKIN_ENV'] == 'demo', 'event_preferences': preferences,
+                'roster_profiles': ROSTER_PROFILES, 'seating_modes': SEATING_MODES,
+                'seating_info': lambda row: seating_info(row, preferences)}
 
     @app.template_filter('taipei')
     def taipei(value):

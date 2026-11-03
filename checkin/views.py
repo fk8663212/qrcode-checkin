@@ -2,6 +2,7 @@ import base64
 import csv
 import io
 import sqlite3
+from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -11,10 +12,12 @@ from flask import (Blueprint, Response, abort, current_app, flash, g, jsonify,
 from werkzeug.security import check_password_hash
 
 from .db import audit, bump_roster, get_db, now, transaction
+from .event_links import get_event_links, save_event_links
+from .event_preferences import attendance_groups, get_preferences, save_preferences
 from .security import csrf_token, hash_password, rate_limit, require_role
 from .services import (ATTENDEE_QUERY, USERNAME_RE, apply_import, check_in, find_attendee,
                        find_ticket, insert_attendee, new_ticket, preview_import,
-                       search_attendees, serialize_attendee, ticket_url, validate_attendee)
+                       search_attendees, serialize_attendee, ticket_url, validate_attendee, update_attendee)
 
 bp = Blueprint('web', __name__)
 
@@ -108,6 +111,7 @@ def ticket_data():
     row = find_ticket(body().get('token'))
     data = serialize_attendee(row)
     data['raffle_label'] = 'P%03d' % row['id']
+    data['event_links'] = get_event_links()
     data.update(event_name=current_app.config['EVENT_NAME'], qr='data:image/png;base64,' + base64.b64encode(qr_png(row['token']).getvalue()).decode())
     return jsonify(data)
 
@@ -157,10 +161,48 @@ def admin():
     rows = search_attendees(query, status)
     stats = get_db().execute('''SELECT COUNT(*) AS total, COUNT(c.id) AS checked
                                FROM attendees a LEFT JOIN checkins c ON c.attendee_pk=a.id AND c.undone_at IS NULL''').fetchone()
-    tables = get_db().execute('''SELECT a.table_no, COUNT(*) AS total, COUNT(c.id) AS checked
-                                FROM attendees a LEFT JOIN checkins c ON c.attendee_pk=a.id AND c.undone_at IS NULL
-                                GROUP BY a.table_no ORDER BY a.table_no='', a.table_no''').fetchall()
+    tables = attendance_groups()
     return render_template('admin.html', rows=rows, stats=stats, tables=tables, query=query, status=status)
+
+
+@bp.route('/admin/event-links', methods=['GET', 'POST'])
+@require_role('admin')
+def event_links():
+    if request.method == 'POST':
+        try:
+            save_event_links(g.user, request.form)
+        except ValueError as error:
+            flash(str(error), 'error')
+            return render_template('event_links.html', links=request.form), 400
+        flash('活動連結已儲存；參加者重新整理票券或按「更新報到狀態」即可查看。', 'success')
+        return redirect(url_for('web.event_links'))
+    return render_template('event_links.html', links=get_event_links())
+
+
+@bp.route('/admin/event-settings', methods=['GET', 'POST'])
+@require_role('admin')
+def event_settings():
+    if request.method == 'POST':
+        try:
+            save_preferences(g.user, request.form)
+        except ValueError as error:
+            flash(str(error), 'error')
+            return render_template('event_settings.html', preferences=request.form), 400
+        flash('活動模板與座位方式已儲存；票券更新後套用，既有名冊、票券及歷史保留。', 'success')
+        return redirect(url_for('web.event_settings'))
+    return render_template('event_settings.html', preferences=get_preferences())
+
+
+@bp.get('/admin/import/template/<profile>.<extension>')
+@require_role('admin')
+def import_template(profile, extension):
+    names = {('standard', 'csv'): 'attendees.csv', ('campus', 'csv'): 'attendees-campus.csv',
+             ('campus', 'xlsx'): 'attendees-campus.xlsx'}
+    name = names.get((profile, extension))
+    if not name:
+        abort(404)
+    return send_file(Path(current_app.root_path).parent / 'examples' / name,
+                     as_attachment=True, download_name=name)
 
 
 @bp.route('/admin/import', methods=['GET', 'POST'])
@@ -170,8 +212,8 @@ def import_csv():
     if request.method == 'POST':
         uploaded = request.files.get('file')
         if not uploaded:
-            abort(400, description='請選擇 UTF-8 CSV 檔案。')
-        preview = preview_import(uploaded.read(), g.user['id'])
+            abort(400, description='請選擇 Excel .xlsx 或 UTF-8 CSV 檔案。')
+        preview = preview_import(uploaded.read(), g.user['id'], request.form.get('profile', 'auto'), uploaded.filename)
     return render_template('import.html', preview=preview)
 
 
@@ -197,7 +239,8 @@ def attendee_new():
             return redirect(url_for('web.attendee_detail', pk=pk))
         except (ValueError, sqlite3.IntegrityError) as error:
             flash(str(error) if isinstance(error, ValueError) else '此參加者編號已存在。', 'error')
-    return render_template('attendee_form.html', attendee=request.form, creating=True)
+    return render_template('attendee_form.html', attendee=request.form if request.method == 'POST' else {
+        'affiliation': get_preferences()['default_affiliation']}, creating=True)
 
 
 @bp.route('/admin/attendees/<int:pk>', methods=['GET', 'POST'])
@@ -209,8 +252,7 @@ def attendee_detail(pk):
             data = validate_attendee(request.form)
             with transaction() as db:
                 before = find_attendee(pk)
-                db.execute('UPDATE attendees SET attendee_id=?,name=?,affiliation=?,table_no=? WHERE id=?',
-                           tuple(data[field] for field in ('attendee_id', 'name', 'affiliation', 'table_no')) + (pk,))
+                update_attendee(db, pk, data)
                 bump_roster(db)
                 # No credentials in audit logs. Preserve old/new roster fields for corrections.
                 import json
@@ -280,7 +322,7 @@ def export(kind):
     with transaction() as db:
         if kind in ('tickets', 'attendance'):
             attendees = db.execute(ATTENDEE_QUERY + ' ORDER BY a.attendee_id').fetchall()
-            headers = ['attendee_id', 'name', 'affiliation', 'table_no']
+            headers = ['attendee_id', 'name', 'affiliation', 'table_no', 'grade', 'title', 'email', 'seating_area']
             rows = [[row[key] for key in headers] for row in attendees]
             if kind == 'tickets':
                 headers += ['ticket_url']
@@ -291,11 +333,11 @@ def export(kind):
                 for values, row in zip(rows, attendees):
                     values.extend(['已報到' if row['checked_at'] else '未報到', local_time(row['checked_at']), row['operator_name']])
         elif kind == 'tables':
-            headers = ['table_no', 'total', 'checked_in', 'pending']
-            found = db.execute('''SELECT a.table_no, COUNT(*) AS total, COUNT(c.id) AS checked
-                                  FROM attendees a LEFT JOIN checkins c ON c.attendee_pk=a.id AND c.undone_at IS NULL
-                                  GROUP BY a.table_no ORDER BY a.table_no''').fetchall()
-            rows = [[row['table_no'], row['total'], row['checked'], row['total'] - row['checked']] for row in found]
+            mode = get_preferences()['seating_mode']
+            headers = [{'table': 'table_no', 'area': 'seating_area', 'grade': 'grade_or_area', 'open': 'seating'}[mode],
+                       'total', 'checked_in', 'pending']
+            found = attendance_groups()
+            rows = [[row['key'] if mode != 'open' else row['label'], row['total'], row['checked'], row['total'] - row['checked']] for row in found]
         elif kind == 'history':
             headers = ['checkin_id', 'attendee_id', 'name', 'checked_at_Asia_Taipei', 'operator', 'method',
                        'undone_at_Asia_Taipei', 'undone_by', 'undo_reason']

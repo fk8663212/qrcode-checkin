@@ -19,6 +19,45 @@
 .event-info dd {
   margin:3px 0 0;
 }
+.ticket-resources {
+  margin:20px 0;
+  text-align:left;
+}
+.ticket-resources h3 {
+  margin:0 0 12px;
+  font-size:1rem;
+}
+.ticket-resource-grid {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+.ticket-resource-grid .ticket-resource {
+  min-width:0;
+  min-height:82px;
+  padding:14px 10px;
+  flex-direction:column;
+  gap:6px;
+  overflow-wrap:anywhere;
+}
+.ticket-resource small {
+  color:var(--muted);
+  font-size:.75rem;
+  font-weight:400;
+}
+.ticket-resource:disabled {
+  cursor:default;
+}
+.stack select {
+  width:100%;
+  min-height:46px;
+  margin-top:6px;
+  padding:10px 12px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:var(--bg);
+  color:var(--text);
+}
 :root {
   color-scheme:dark;
   --bg:#101210;

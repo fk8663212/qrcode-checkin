@@ -29,7 +29,8 @@
     byId('result-name').textContent = guest.name;
     byId('result-id').textContent = guest.attendee_id;
     byId('result-affiliation').textContent = guest.affiliation || '未填寫';
-    byId('result-table').textContent = guest.table_no || '現場安排';
+    byId('result-seat-label').textContent = guest.seating?.label || '桌次';
+    byId('result-table').textContent = guest.seating?.value || guest.table_no || '現場安排';
     byId('result-status').textContent = guest.checked_in ? '已報到' : '尚未報到';
     byId('result-status').className = guest.checked_in ? 'success-text' : '';
     byId('result-label').textContent = success ? '✓ 報到成功' : (guest.checked_in ? '已報到 · 請勿重複計數' : '請核對來賓');
@@ -127,7 +128,7 @@
         const button = document.createElement('button');
         button.type = 'button'; button.className = 'search-result';
         const name = document.createElement('strong'); name.textContent = `${guest.name} · ${guest.attendee_id}`;
-        const detail = document.createElement('span'); detail.textContent = `${guest.affiliation || '未填單位'} ｜ 桌次 ${guest.table_no || '待安排'} ｜ ${guest.checked_in ? '已報到' : '未報到'}`;
+        const detail = document.createElement('span'); detail.textContent = `${guest.affiliation || '未填單位'} ｜ ${guest.seating?.label || '桌次'} ${guest.seating?.value || guest.table_no || '待安排'} ｜ ${guest.checked_in ? '已報到' : '未報到'}`;
         button.append(name, detail);
         button.addEventListener('click', () => selectGuest(guest, { attendee_pk: guest.id }));
         results.append(button);
@@ -145,7 +146,7 @@
       const data = await Checkin.api('/api/staff/checkin', chosen);
       // Only a successful server response may enter the success state.
       showGuest(data.attendee, data.created);
-      notice(data.created ? `${data.attendee.name} · ${data.attendee.table_no || '現場安排'} · 報到成功` : '此來賓已報到，原紀錄未變更。', 'success');
+      notice(data.created ? `${data.attendee.name} · ${data.attendee.seating?.value || data.attendee.table_no || '現場安排'} · 報到成功` : '此來賓已報到，原紀錄未變更。', 'success');
     } catch (error) {
       notice(Checkin.errorMessage(error, true));
       confirm.disabled = false;

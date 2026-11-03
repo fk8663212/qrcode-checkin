@@ -20,7 +20,98 @@
 | `bingo_server_smoke` | 200 人領卡、24 個並行 client 任務、10 個同回合抽號、狀態同步及重啟 | 單輪同步的延遲統計；不是 200 人持續在線 |
 | `raffle_server_smoke` | 200 位得主、10 個同時操作、獎品不超發、重抽及重啟 | 短時間正確性驗證 |
 
-既有通過紀錄見 [TEST_RESULTS.md](TEST_RESULTS.md)，不代表執行上述指令就已完成下面的長時間壓測。這份文件沒有新增持續壓測腳本，也沒有把壓測流量送到現行服務。
+既有通過紀錄見 [TEST_RESULTS.md](TEST_RESULTS.md)。上述 smoke 程式測本機暫存服務；要測已部署的 VPS，使用下一節新增的 `vps_load_test`，網址由操作者明確指定。
+
+## 已部署 VPS：可直接操作的指令
+
+在自己的 Mac 專案根目錄產生負載，VPS 保持原部署運行。壓測工具使用 Python 標準函式庫及 k6，服務的 requirements 與容器不需新增套件。Mac 若尚未安裝 k6：
+
+```sh
+brew install k6
+k6 version
+```
+
+安裝方式見 [k6 官方說明](https://grafana.com/docs/k6/latest/set-up/install-k6/)。若使用獨立下載的執行檔，以下指令另加 `--k6-bin /完整路徑/k6`。不必在 VPS 上安裝 k6。
+
+### 先測不改變活動紀錄的公開 API
+
+將下例網址替換成自己的 HTTPS **測試站**：
+
+```sh
+.venv/bin/python -m scripts.vps_load_test \
+  --url https://test-checkin.example.org \
+  --mode public --users 10 --duration 30s
+
+.venv/bin/python -m scripts.vps_load_test \
+  --url https://test-checkin.example.org \
+  --mode public --users 120 --duration 60s
+```
+
+`public` 模式將虛擬使用者分配到賓果／抽獎的公開狀態 API，每人每兩秒查詢一次。120 人約為每秒 60 次查詢；實際速率以報告為準。此模式是公開 API 負載基準，沒有驗證個人票券、報到、領卡或手機渲染，不能用其結果宣稱完整 120 人活動已驗收。
+
+### 再測 120 張獨立票券與賓果卡
+
+1. 在測試站匯入 `examples/attendees-120.csv`。120 位假來賓採 `TEST120-001`～`TEST120-120`；可和原 20 位示範來賓共存。
+2. 到管理總覽匯出「票券連結」CSV，存成這台電腦的 `examples/tickets.csv`。這份是帶 `ticket_url` 的匯出清單，原本只有姓名／桌次的名冊 CSV 不適用。此路徑已加入 `.gitignore`；亦可存於已忽略的 `exports/`。
+3. 在「賓果主持台」按「開放領卡」。第一次壓測先保持同一局；測試期間若切換新局、撤回報到或補發票券，工具會因身分／局次變更停止。
+4. 建立或使用自己的測試工作人員帳號。在本機終端機執行：
+
+```sh
+# 先確認 10 位正常；只有尚未報到者需要輸入帳號與密碼。
+.venv/bin/python -m scripts.vps_load_test \
+  --url https://test-checkin.example.org \
+  --mode bingo --tickets examples/tickets.csv \
+  --users 10 --duration 30s --check-in
+
+# 120 位持續同步，每 10 次同步（約 20 秒）切換一次格子記號。
+.venv/bin/python -m scripts.vps_load_test \
+  --url https://test-checkin.example.org \
+  --mode bingo --tickets examples/tickets.csv \
+  --users 120 --duration 5m --check-in --mark-every 10
+
+# 前一輪通過後延長至 30 分鐘。
+.venv/bin/python -m scripts.vps_load_test \
+  --url https://test-checkin.example.org \
+  --mode bingo --tickets examples/tickets.csv \
+  --users 120 --duration 30m --mark-every 10
+```
+
+`--check-in` 會在預檢後透過正常登入、CSRF 與工作人員 POST，協助所選 TEST 假來賓報到。帳號可互動輸入，或另加 `--staff-user 測試工作人員帳號`；密碼一律遮罩輸入，不放命令列或報告。所有所選來賓的編號及姓名會先由工作人員查票核對，再開始報到。再次執行時保留原報到、原卡；已全數報到時不用再次登入。
+
+自動報到是壓測前的預備動作，延遲不計入持續輪詢的效能統計，不能當作「4 位工作人員同時報到」的驗收。持續壓測涵蓋每人獨立 cookie／CSRF、本人領卡、同卡身分驗證、每兩秒同步及可選的手動記號。主持人可從正常介面抽號、抽獎與查看投影，同時觀察這些操作的體感；自動化工具不替主持人執行抽選。
+
+120 人每兩秒同步約為每秒 60 次查詢，200 人約每秒 100 次；領卡及勾選另計。`--users` 最大 200，但票券清單至少要有同樣多的 TEST 假來賓。工具只選取 `TEST-xxx`、`TEST120-xxx`、`TEST200-xxx` 等測試編號，略過其他來賓，並拒絕票券來源不符、重複憑證、非 HTTPS 網址及錯誤身分。未提供票券時不會用匿名狀態冒充已領卡玩家。
+
+### 查看結果與主機負載
+
+每輪摘要寫到本機 `test-results/vps-load-日期時間-隨機值/summary.json`，終端機同時顯示結果。摘要包含目標、模式、人數、實際時長、HTTP 速率、p95／p99、429／5xx／網路錯誤、成功領卡人數及保存勾選次數；沒有票券、姓名、cookie 或密碼。查看：
+
+```sh
+.venv/bin/python -m json.tool test-results/vps-load-本次資料夾/summary.json
+```
+
+`passed: true` 需達到設定時長、必要玩家全部成功領卡、回應資料驗證及延遲／錯誤門檻全部通過。錯誤率超標時會提早停止；被中斷、沒有樣本或只是回傳 HTTP 200 的錯誤資料都不會算通過。初步門檻為狀態查詢 p95 < 1 秒、p99 < 2 秒、非預期 HTTP 與資料錯誤為 0，並非目前 VPS 的效能保證。
+
+在 VPS 另一個 SSH 終端機觀察：
+
+```sh
+docker stats
+docker compose logs --tail 100 app
+df -h
+```
+
+核對 CPU、記憶體、磁碟及資料庫鎖定／逾時；報告的請求速率也要接近預期。若回應變慢導致實際流量下降，不能僅憑錯誤率為 0 就宣稱達到目標流量。測試前後另用後台核對人數、卡片及得獎紀錄，並完成實體手機與投影彩排。
+
+票券只在必要的 HTTPS POST 本文與私人暫存檔中使用；暫存檔權限 600，退出時刪除。工具不採用原有 k6 的 HTTP-debug、雲端輸出或跳過憑證設定，請勿自行開啟包含 HTTP 本文的除錯。快速重跑可能遇到每分鐘票券查詢／領卡額度，應等待限流窗結束後核對重試。
+
+開發者可在本機獨立資料庫驗證此工具，會啟動自己的 Gunicorn，**不連線 VPS**。本次實際通過環境為 Python 3.14.7／Gunicorn 26.2.0；舊版 Python 3.9.6／Gunicorn 23 的本機 worker 啟動異常另記於 [TEST_RESULTS.md](TEST_RESULTS.md)，不要將沒有完成的測試視為通過：
+
+```sh
+.venv/bin/python -m pytest -q tests/test_vps_load_test.py
+.venv/bin/python -m scripts.vps_load_smoke --k6-bin /完整路徑/k6
+```
+
+`--allow-local-http` 只供這類 localhost／loopback 回歸；VPS 持續使用正常 HTTPS 憑證驗證。
 
 ## 部署測試環境
 

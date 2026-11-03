@@ -16,12 +16,13 @@
       <p class="muted" id="claim-hint">{{ tr('請先完成報到，再使用主辦方發送的個人電子票券領卡。') }}</p>
       <form id="claim-form">
         <label for="ticket-code">{{ tr('個人電子票券連結') }}</label><input id="ticket-code" name="code" class="code-input" maxlength="2048" placeholder="{{ tr('貼上個人電子票券完整連結') }}" autocomplete="off" autocapitalize="none" spellcheck="false" required>
-        <p class="hint">{{ tr('請先完成報到。同一張電子票券可恢復原卡；姓名與桌次沿用活動名冊，請勿轉傳票券。') }}</p>
+        <p class="hint">{{ tr('請先完成報到。同一張電子票券可恢復原卡；姓名與桌次沿用活動名冊，請勿轉傳票券。' if event_preferences.seating_mode == 'table' else '請先完成報到。同一張電子票券可恢復原卡；姓名與座位資訊沿用活動名冊，請勿轉傳票券。') }}</p>
         <button class="button gold full" type="submit">{{ tr('領卡／恢復原卡') }} <span aria-hidden="true">↗</span></button>
       </form>
     </section>
     <section id="card-panel" hidden>
       <div class="card-meta"><div><p class="eyebrow" id="card-label">YOUR LUCKY CARD</p><h2 id="player-greeting"></h2></div><span class="pill" id="game-badge">{{ tr('第 {game} 局', game=1) }}</span></div>
+      <p id="player-seating" class="hint"></p>
       <div class="latest-strip" id="player-draw-stage"><span>{{ tr('最新開獎') }}</span><strong id="player-latest" aria-hidden="true">—</strong><span id="player-round">{{ tr('等待主持人抽號') }}</span></div>
       <div class="bingo-letters" aria-hidden="true"><span>B</span><span>I</span><span>N</span><span>G</span><span>O</span></div>
       <div id="bingo-card" class="bingo-card" role="group" aria-label="{{ tr('5 乘 5 賓果卡') }}"></div>
