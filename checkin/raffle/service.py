@@ -231,7 +231,7 @@ def snapshot(admin=False, round_id=None):
                 if row['voided_at']:
                     continue
                 value = {key:row[key] for key in ('id','draw_id','prize_id','prize_name','drawn_at','claimed_at')}
-                value.update(name='幸運來賓', card_label='P%03d' % row['attendee_pk'])
+                value.update(name=row['name'], card_label='P%03d' % row['attendee_pk'])
             winners.append(value)
         data = {'round':dict(selected_round), 'latest_round_id':latest['id'], 'prizes':prizes, 'winners':winners,
                 'eligible_count':len(eligible(db, selected_round)), 'server_time':snapshot_time}

@@ -32,12 +32,13 @@ def main():
                             'SECRET_KEY':'raffle-browser-fixture-secret-00000000','EVENT_NAME':'抽獎測試晚宴',
                             'PUBLIC_BASE_URL':'http://127.0.0.1','INITIAL_ADMIN_USERNAME':'','INITIAL_ADMIN_PASSWORD_HASH':''})
             password='raffle-browser-fixture-password!'
+            names={1:'抽獎來賓1',2:'Alexandra Catherine Montgomery Robertson',3:'測試 <b>來賓</b>',4:'未報到來賓'}
             with app.app_context(),transaction() as db:
                 hashed=hash_password(password)
                 for username,role in [('raffle-admin','admin'),('raffle-staff','staff')]:
                     db.execute('INSERT INTO users(username,password_hash,role,created_at) VALUES (?,?,?,?)',(username,hashed,role,now()))
                 for number in range(1,5):
-                    insert_attendee(db,{'attendee_id':f'RAFFLE{number:03}','name':f'抽獎來賓{number}','affiliation':'測試單位','table_no':'03'})
+                    insert_attendee(db,{'attendee_id':f'RAFFLE{number:03}','name':names[number],'affiliation':'測試單位','table_no':'03'})
                 token=db.execute('SELECT token FROM tickets WHERE attendee_pk=1').fetchone()[0]
             with app.app_context():
                 staff=dict(get_db().execute("SELECT * FROM users WHERE username='raffle-staff'").fetchone())
@@ -79,6 +80,21 @@ def main():
                 display=browser.new_context(locale='zh-TW',viewport={'width':1522,'height':1000}).new_page()
                 display.goto(base+'/raffle/display')
                 expect(display.locator('#raffle-display-winners')).to_contain_text('幸運得主即將揭曉')
+
+                def verify_projection(winners):
+                    expect(display.locator('.raffle-display-winner')).to_have_count(len(winners))
+                    for winner in winners:
+                        label='P%03d' % winner['attendee_pk']
+                        card=display.locator('.raffle-display-winner').filter(has=display.get_by_text(label,exact=True))
+                        expect(card.locator('.raffle-display-name')).to_have_text(winner['name'])
+                        expect(card.locator('.raffle-display-prize')).to_have_text(winner['prize_name'])
+                    assert display.locator('#raffle-display-winners b, #raffle-display-winners img, #animation-winners b, #animation-winners img').count() == 0
+                    assert '未報到來賓' not in display.locator('#raffle-app').inner_text()
+                    for width in (1522,390,320):
+                        display.set_viewport_size({'width':width,'height':1000})
+                        assert display.evaluate('document.documentElement.scrollWidth <= innerWidth')
+                    display.set_viewport_size({'width':1522,'height':1000})
+
                 host.bring_to_front()
                 host.set_viewport_size({'width':390,'height':844})
                 assert host.evaluate('document.documentElement.scrollWidth <= innerWidth')
@@ -133,6 +149,14 @@ def main():
                 expect(display.locator('#raffle-animation')).to_have_class('raffle-animation is-rolling')
                 display.locator('#raffle-animation').screenshot(path=str(output/(engine+'-raffle-animation-projection.png')))
                 expect(display.locator('.raffle-display-winner')).to_have_count(2,timeout=10000)
+                with app.app_context():
+                    drawn=[dict(row) for row in get_db().execute('''SELECT w.*,p.name AS prize_name FROM raffle_winners w
+                        JOIN raffle_prizes p ON p.id=w.prize_id ORDER BY w.id DESC''')]
+                verify_projection(drawn)
+                expect(display.locator('#animation-prize')).to_have_text('禮券')
+                expect(display.locator('#animation-winners strong')).to_contain_text(drawn[0]['name'])
+                expect(display.locator('#animation-winners small')).to_have_text('P%03d' % drawn[0]['attendee_pk'])
+                display.locator('#raffle-animation').screenshot(path=str(output/(engine+'-raffle-projection-names-revealed.png')))
                 host.bring_to_front()
                 expect(host.locator('.raffle-winner')).to_have_count(2)
                 expect(host.locator('#raffle-animation')).to_have_class(re.compile(r'\bis-revealed\b'))
@@ -159,9 +183,20 @@ def main():
                 expect(host.get_by_role('button',name='已領獎 ✓（取消標記）',exact=True)).to_be_visible()
 
                 display.bring_to_front()
-                expect(display.locator('.raffle-display-winner')).to_have_count(2)
-                assert '抽獎來賓' not in display.locator('#raffle-app').inner_text()
+                with app.app_context():
+                    active=[dict(row) for row in get_db().execute('''SELECT w.*,p.name AS prize_name FROM raffle_winners w
+                        JOIN raffle_prizes p ON p.id=w.prize_id WHERE w.voided_at IS NULL ORDER BY w.id DESC''')]
+                verify_projection(active)
+                assert original['name'] not in display.locator('#raffle-display-winners').inner_text()
+                expect(display.locator('.raffle-display-winner').filter(has=display.get_by_text('P%03d' % replacement['attendee_pk'],exact=True))).to_contain_text('已領獎 ✓')
                 display.screenshot(path=str(output/(engine+'-raffle-display.png')),full_page=True)
+                display.goto(base+'/raffle/display?lang=en')
+                expect(display.get_by_text('Winners are announced by name, prize and draw number.',exact=False)).to_be_visible()
+                verify_projection(active)
+                expect(display.locator('#raffle-animation')).to_be_hidden()
+                display.set_viewport_size({'width':320,'height':740})
+                display.screenshot(path=str(output/(engine+'-raffle-projection-names-mobile-en.png')),full_page=True)
+                display.set_viewport_size({'width':1522,'height':1000})
                 host.bring_to_front()
                 host.locator('#new-round-button').click()
                 host.locator('#new-include-previous').check()
@@ -201,7 +236,9 @@ def main():
                 results.append({'browser':engine,'normal_admin_login':'PASS','checked_in_pool':'PASS','personal_ticket_raffle_label':'PASS',
                                 'lost_request_and_lost_response_safe_retry':'PASS','pending_survives_reload':'PASS',
                                 'no_repeat_and_rule_lock':'PASS','prize_topup':'PASS','redraw_history_and_claim':'PASS',
-                                'bonus_round_previous_winners_and_history':'PASS','public_projection_privacy':'PASS',
+                                'bonus_round_previous_winners_and_history':'PASS','public_projection_winner_names_and_prizes':'PASS',
+                                'public_projection_private_fields_hidden':'PASS','projection_names_are_text_not_html':'PASS',
+                                'projection_long_names_320_390_1522_layout':'PASS','projection_english_preserves_names_and_prizes':'PASS',
                                 'csv_download':'PASS','mobile_390_and_320_layout':'PASS','javascript_errors':errors})
                 results[-1].update({'rolling_holds_winners_and_disables_next_draw':'PASS','projection_roll_and_reveal':'PASS',
                                     'reduced_motion_direct_reveal':'PASS','reload_does_not_replay':'PASS'})

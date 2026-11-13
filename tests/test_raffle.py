@@ -289,18 +289,64 @@ def test_all_mutations_and_exports_require_admin_and_csrf(app,path,data):
     assert client_for(app,1).post(path,json=data).status_code == 403
 
 
-def test_public_projection_never_exposes_roster_or_candidate_pool(app):
-    ready(app)
-    assert draw(app,prize(app)).status_code == 200
+def test_public_projection_shows_winner_name_without_roster_or_candidate_details(app):
+    ready(app,3)
+    with app.app_context(),transaction() as db:
+        for pk in range(1,4):
+            db.execute('UPDATE attendees SET name=?,email=? WHERE id=?',
+                       (f'測試來賓{pk}',f'guest{pk}@example.org',pk))
+    result=draw(app,prize(app))
+    assert result.status_code == 200
+    winner=result.json['winners'][0]
     response=client_for(app).get('/api/raffle/display-state')
     assert response.status_code == 200
-    assert '同名來賓' not in response.text and ticket(app) not in response.text
+    assert response.json['winners'][0]['name'] == winner['name']
+    assert response.json['winners'][0]['prize_name'] == winner['prize_name']
+    assert response.json['winners'][0]['card_label'] == 'P%03d' % winner['attendee_pk']
+    public_text=json.dumps(response.json,ensure_ascii=False)
+    for pk in range(1,4):
+        assert ticket(app,pk) not in response.text
+        if pk != winner['attendee_pk']:
+            assert f'測試來賓{pk}' not in public_text
+    assert '@example.org' not in response.text
     assert all(key not in response.json for key in ('draws','rounds','attendees','users','tickets'))
-    assert response.json['winners'][0]['card_label'].startswith('P')
+    assert set(response.json['winners'][0]) == {
+        'id','draw_id','prize_id','prize_name','drawn_at','claimed_at','name','card_label'}
     assert set(response.json['latest_draw']) == {'id','drawn_at','prize_name','count'}
     assert response.json['latest_draw']['count'] == response.json['draw_count'] == 1
-    assert all(key not in response.json['winners'][0] for key in ('attendee_id','attendee_pk','table_no','operator_name'))
     assert response.headers['Cache-Control'].startswith('no-store')
+
+
+def test_projection_keeps_same_name_winners_distinct_and_matches_each_prize(app):
+    ready(app)
+    first=prize(app,name='晚宴禮券')
+    second=prize(app,name='幸運加碼獎')
+    assert draw(app,first).status_code == 200
+    result=draw(app,second)
+    assert result.status_code == 200
+    expected={w['id']:(w['name'],w['prize_name'],'P%03d' % w['attendee_pk']) for w in result.json['winners']}
+    public=client_for(app).get('/api/raffle/display-state').json
+    assert len(public['winners']) == 2
+    assert len({w['card_label'] for w in public['winners']}) == 2
+    assert {w['id']:(w['name'],w['prize_name'],w['card_label']) for w in public['winners']} == expected
+
+
+def test_projection_removes_replaced_winner_and_refreshes_claimed_state(app):
+    ready(app)
+    with app.app_context(),transaction() as db:
+        db.execute("UPDATE attendees SET name='原得主' WHERE id=1")
+        db.execute("UPDATE attendees SET name='替補得主' WHERE id=2")
+    original=draw(app,prize(app)).json['winners'][0]
+    result=redraw(app,original)
+    assert result.status_code == 200
+    replacement=next(w for w in result.json['winners'] if not w['voided_at'])
+    public=client_for(app).get('/api/raffle/display-state').json
+    assert [w['name'] for w in public['winners']] == [replacement['name']]
+    assert original['name'] not in json.dumps(public,ensure_ascii=False)
+    assert action(app,'claimed',winner_id=replacement['id'],claimed=True).status_code == 200
+    public=client_for(app).get('/api/raffle/display-state').json
+    assert public['winners'][0]['claimed_at']
+    assert public['winners'][0]['prize_name'] == replacement['prize_name']
 
 
 def test_restart_export_and_roster_edit_preserve_winning_identity_and_history(app):
@@ -313,6 +359,10 @@ def test_restart_export_and_roster_edit_preserve_winning_identity_and_history(ap
     restarted=create_app(dict(app.config))
     assert state(restarted)['winners'][0]['name'] == '同名來賓'
     assert state(restarted)['winners'][0]['claimed_at']
+    public=client_for(restarted).get('/api/raffle/display-state').json
+    assert public['winners'][0]['name'] == '同名來賓'
+    assert public['winners'][0]['prize_name'] == '=禮券'
+    assert public['winners'][0]['claimed_at']
     exported=post(client_for(app,1),'/raffle/export/csv',data={})
     rows=list(csv.reader(io.StringIO(exported.data.decode('utf-8-sig'))))
     assert rows[1][1] == "'=禮券" and rows[1][4] == '同名來賓' and rows[1][5] == '01'

@@ -98,6 +98,7 @@ def test_public_projection_hides_operator_navigation_even_when_signed_in(app):
     html = client.get('/raffle/display?lang=en').get_data(as_text=True)
     assert '管理總覽' not in html and '工作人員' not in html and '登出' not in html
     assert 'Tonight’s prizes' in html
+    assert 'Winners are announced by name, prize and draw number.' in html
     assert '管理總覽' in client.get('/admin').get_data(as_text=True)
 
 

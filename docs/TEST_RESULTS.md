@@ -278,6 +278,19 @@ GitHub 與原本機賓果專案版本確認為 `e86191a0656881fa52030fa3a7aca33e
 
 操作見 [名冊與座位模板](ROSTER_TEMPLATES.md)。本次沒有部署或修改 VPS 資料；實際公關檔案、原生 Excel、正式檔案分享權限、實體手機與現場分區指引仍待 [實機清單](ACCEPTANCE.md) 驗收。
 
+## 2026-11-10：一般抽獎投影顯示得主姓名與獎品
+
+一般抽獎 `/raffle/display` 的揭曉區及完整名單顯示中獎者姓名與獎品，保留抽獎卡號供同名核對。公開狀態只增加有效得主在抽出時保存的姓名，不提供未中獎名單、學號、Email、座位或票券憑證；重抽撤銷者由公開名單移除。票券與投影說明同步更新繁英文字。
+
+- 完整後端測試 **324 項通過**（Python 3.9.6，109.90 秒），包括新增的同名得主／獎品配對、重抽後公開名單與領獎更新，以及加強的公開欄位白名單、未中獎者隔離、重啟及編輯名冊後保存得獎姓名。
+- 一般抽獎動畫 **10 項通過**，前端模組語法檢查通過；揭曉仍依伺服器保存結果及共同倒數，不在倒數前列出新得主。
+- `scripts.raffle_browser_smoke` 在 Chromium 148／WebKit 26.4 均通過：正常管理員登入、抽選／揭曉姓名與獎品配對、重抽移除原得主、領獎更新、英文保留原姓名與獎品、320／390／1522 px 排版，以及姓名中的 HTML 字樣只顯示文字。既有斷線安全重試、加碼、匯出、減少動態效果及重整不重播均通過。
+- `scripts.i18n_browser_smoke` 的兩引擎繁英切換、英文票券／賓果與抽獎揭曉、領獎、補發及手機尺寸流程均通過，沒有 JavaScript 頁面錯誤。
+
+結果為 `test-results/raffle-browser-results.json` 與 `i18n-browser-results.json`；投影截圖為 `*-raffle-display.png`、`*-raffle-projection-names-revealed.png`、`*-raffle-projection-names-mobile-en.png`，已實際檢視。全部使用本機隔離資料庫與虛構來賓。既有多程序抽獎腳本已更新公開姓名的驗證預期，本次未重跑該腳本。
+
+VPS 需部署新版程式後生效；本次沒有操作 VPS。實際投影設備、觀看距離、全螢幕與實體手機仍待 [ACCEPTANCE.md](ACCEPTANCE.md) 驗收。
+
 ## 部署範本與尚未完成的驗收
 
 Compose YAML 已解析並檢查 ARM64、應用程式不公開 port、持久化 volume 與唯讀根檔案系統設定。另以獨立 Compose 5.6.0 執行 `config --quiet` 通過；以 Caddy 2.11.7 執行 `adapt --validate` 通過，未啟動公開代理、未申請憑證。這些是本機設定驗證，未啟動 Docker Engine 或容器。

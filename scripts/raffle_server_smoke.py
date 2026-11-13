@@ -116,7 +116,10 @@ def main():
                 with urllib.request.urlopen(base+'/api/raffle/display-state',timeout=30) as response:
                     public=json.load(response)
                 assert len(public['winners'])==200 and 'draws' not in public
-                assert '多程序來賓' not in json.dumps(public,ensure_ascii=False)
+                assert {w['id']:(w['name'],w['prize_name'],'P%03d' % w['attendee_pk']) for w in active} == {
+                    w['id']:(w['name'],w['prize_name'],w['card_label']) for w in public['winners']}
+                assert all(set(w)=={'id','draw_id','prize_id','prize_name','drawn_at','claimed_at','name','card_label'}
+                           for w in public['winners'])
             finally:
                 if process and process.poll() is None:
                     process.terminate();process.wait(timeout=15)
@@ -125,7 +128,8 @@ def main():
         result={'workers':2,'threads_per_worker':4,'checked_in_guests':200,'parallel_requests_per_case':10,
                 'same_request_awards_once':'PASS','distinct_requests_respect_prize_capacity':'PASS',
                 'parallel_redraw_replaces_once':'PASS','two_hundred_unique_active_winners':'PASS',
-                'real_restart_preserves_awards_and_retry_identity':'PASS','public_privacy':'PASS','no_ticket_tokens_in_logs':'PASS'}
+                'real_restart_preserves_awards_and_retry_identity':'PASS','public_winner_names_and_prizes':'PASS',
+                'public_private_fields_hidden':'PASS','no_ticket_tokens_in_logs':'PASS'}
         output=Path('test-results');output.mkdir(exist_ok=True)
         (output/'raffle-server-results.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
         print(json.dumps(result,ensure_ascii=False,indent=2))

@@ -77,7 +77,11 @@ import {createRafflePresenter} from './animation.mjs';
     $('animation-prize').textContent=draw.prize_name;
     $('animation-title').textContent=T('恭喜幸運得主！');
     $('raffle-reels').hidden=true;$('animation-winners').hidden=false;
-    $('animation-winners').replaceChildren(...winners.slice(0,12).map(w => el('strong',host ? w.name+' · '+seatingText(w) : w.card_label)));
+    $('animation-winners').replaceChildren(...winners.slice(0,12).map(w => {
+      const winner = el('strong',host ? w.name+' · '+seatingText(w) : w.name);
+      if(!host)winner.append(el('small',w.card_label));
+      return winner;
+    }));
     $('animation-hint').textContent=T('已揭曉 {count} 位得主{detail}', {count: winners.length, detail: T(winners.length>12 ? ' · 完整名單請見下方' : ' · 請核對本人後領獎')});
     announceResult();controls();
   }
@@ -240,7 +244,12 @@ import {createRafflePresenter} from './animation.mjs';
     displaySignature=signature;
     const list=$('raffle-display-winners');list.replaceChildren();
     if(!state.winners.length)list.append(el('p',T('幸運得主即將揭曉，請等候主持人抽獎。'),'raffle-empty'));
-    for(const winner of state.winners){const card=el('article',undefined,'raffle-display-winner');card.append(el('p',winner.prize_name),el('strong',winner.card_label),el('p',T(winner.claimed_at ? '已領獎 ✓' : '恭喜中獎')));list.append(card);}
+    for(const winner of state.winners){
+      const card=el('article',undefined,'raffle-display-winner');
+      card.append(el('p',winner.prize_name,'raffle-display-prize'),el('strong',winner.name,'raffle-display-name'),
+        el('p',winner.card_label,'raffle-display-card-label'),el('p',T(winner.claimed_at ? '已領獎 ✓' : '恭喜中獎')));
+      list.append(card);
+    }
     $('raffle-display-prizes').replaceChildren(...(state.prizes.length ? state.prizes.map(p => el('p',T('{name} · {awarded} / {quantity} 份', {name: p.name, awarded: p.awarded, quantity: p.quantity}))) : [el('p',T('尚未設定獎品，請等候主持人。'),'muted')]));
   }
   if(host){
