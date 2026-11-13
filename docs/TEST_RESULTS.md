@@ -291,6 +291,20 @@ GitHub 與原本機賓果專案版本確認為 `e86191a0656881fa52030fa3a7aca33e
 
 VPS 需部署新版程式後生效；本次沒有操作 VPS。實際投影設備、觀看距離、全螢幕與實體手機仍待 [ACCEPTANCE.md](ACCEPTANCE.md) 驗收。
 
+## 2026-11-13：批次獎品清單與未抽獎品保密
+
+管理員可在一般抽獎主持台貼上「獎品名稱,份數」清單，或從 Excel 複製 Tab 分隔的兩欄。先預覽、核對合計後確認整批新增；只填名稱視為 1 份。公開投影改為僅列已揭曉獎品及已抽出份數，滾動時先顯示「神秘獎品／Mystery prize」，揭曉後才顯示本次獎品及得主。
+
+- 完整後端 **351 項通過**（Python 3.9.6，118.48 秒）。新增及擴充 27 項情境，包含逗號／Tab／引號／空白行、名稱與份數錯誤、容量上限、只預覽不寫入、整批原子新增與稽核失敗回滾、六個並行同操作請求只新增一批、重啟與跨輪次安全重試、管理員／工作人員／未登入權限及 CSRF。
+- 公開 API 僅回傳已抽獎品的 `id`、`name`、`awarded`，不傳未抽品項與預備 `quantity`；即使已登入管理員使用公開端點，仍套用相同範圍。追加秘密品項不會出現在投影資料，新輪次回到尚未揭曉狀態。
+- 一般抽獎動畫 **10 項通過**，前端模組語法檢查通過。
+- `scripts.raffle_browser_smoke` 的 Chromium 148／WebKit 26.4 均通過：錯誤行提示、清單預覽前後資料庫筆數、提交前中斷與提交後回應遺失、重整後同操作安全重試，以及秘密獎品未出現在公開 API 或 DOM。原揭曉姓名／獎品、重抽、領獎、加碼、匯出與 320／390／1522 px 排版流程均通過，沒有 JavaScript 頁面錯誤。
+- `scripts.i18n_browser_smoke` 的兩引擎流程均通過：英文開抽前保密、Mystery prize 滾動、揭曉後保留原獎品名稱、僅顯示已抽出份數，及既有票券／賓果／領獎／補發的繁英切換。
+
+結果為 `test-results/raffle-browser-results.json` 與 `i18n-browser-results.json`；已實際檢視 `*-raffle-prize-list-preview.png`、`*-raffle-mystery-before-draw.png` 及 `*-raffle-animation-projection.png`。清單輸入框採 16px 字級，窄螢幕預覽及表格不造成整頁橫向溢出。全部使用本機隔離資料庫與虛構來賓。
+
+操作與範例見 [RAFFLE.md](RAFFLE.md)。VPS 需更新程式並重啟服務，主持台及投影頁重新整理後使用；本次沒有操作 VPS。實體手機輸入、現場投影與網路切換仍待 [ACCEPTANCE.md](ACCEPTANCE.md) 驗收。
+
 ## 部署範本與尚未完成的驗收
 
 Compose YAML 已解析並檢查 ARM64、應用程式不公開 port、持久化 volume 與唯讀根檔案系統設定。另以獨立 Compose 5.6.0 執行 `config --quiet` 通過；以 Caddy 2.11.7 執行 `adapt --validate` 通過，未啟動公開代理、未申請憑證。這些是本機設定驗證，未啟動 Docker Engine 或容器。

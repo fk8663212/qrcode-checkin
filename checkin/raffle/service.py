@@ -1,4 +1,5 @@
 """Auditable raffle operations. Every award, retry and replacement is one SQLite transaction."""
+import csv
 import json
 import re
 import secrets
@@ -6,6 +7,7 @@ import time
 import unicodedata
 
 from flask import abort
+from werkzeug.exceptions import BadRequest
 
 from ..db import audit, get_db, now, transaction
 from ..event_preferences import get_preferences, seating_info
@@ -126,6 +128,60 @@ def prize(actor, round_id, data):
             'previous':dict(previous) if previous else None}))
 
 
+def parse_prize_list(source):
+    if not isinstance(source, str) or len(source) > 50000:
+        abort(400, description='請貼上獎品清單，內容最多 50,000 字。')
+    items, errors = [], []
+    for line_no, line in enumerate(source.splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            fields = next(csv.reader([line], delimiter='\t' if '\t' in line else ',', strict=True))
+            if not 1 <= len(fields) <= 2:
+                raise ValueError('每行請填「獎品名稱,份數」，也可用 Tab 分隔。')
+            name = text(fields[0], '獎品名稱')
+            raw_quantity = fields[1].strip() if len(fields) == 2 else '1'
+            if not re.fullmatch(r'[0-9]{1,3}', raw_quantity):
+                raise ValueError('獎品份數必須是 1～200 的整數。')
+            quantity = integer(int(raw_quantity), '獎品份數', MAX_QUANTITY)
+            items.append({'name':name, 'quantity':quantity})
+        except (csv.Error, ValueError, BadRequest) as error:
+            errors.append(f'第 {line_no} 行：' + (error.description if isinstance(error, BadRequest) else str(error)))
+    if errors:
+        abort(400, description='；'.join(errors[:5]) + ('；其餘錯誤請修正後重新預覽。' if len(errors) > 5 else ''))
+    if not items or len(items) > 200:
+        abort(400, description='每次請輸入 1～200 款獎品。')
+    return items
+
+
+def prize_batch(actor, round_id, data):
+    items = parse_prize_list(data.get('list'))
+    request_id = data.get('request_id')
+    if not isinstance(request_id, str) or not REQUEST_ID.fullmatch(request_id):
+        abort(400, description='缺少有效操作識別碼，請重新整理。')
+    with transaction() as db:
+        # The audit receipt and all prizes commit together under BEGIN IMMEDIATE.
+        # Reading that receipt first also makes retries after a lost response safe.
+        for row in db.execute("SELECT actor_id,detail FROM audit_log WHERE action='raffle_prizes'"):
+            receipt = json.loads(row['detail'])
+            if receipt['request_id'] == request_id:
+                if row['actor_id'] != actor['id'] or receipt['round_id'] != round_id or receipt['items'] != items:
+                    abort(409, description='操作識別碼已被其他獎品清單使用，請重新整理並核對紀錄。')
+                return {'round_id':round_id, 'count':len(items), 'quantity':sum(item['quantity'] for item in items),
+                        'prize_ids':receipt['prize_ids'], 'replayed':True}
+        current(db, round_id)
+        prize_ids = []
+        stamp = now()
+        for item in items:
+            prize_ids.append(db.execute('INSERT INTO raffle_prizes(round_id,name,quantity,created_at) VALUES (?,?,?,?)',
+                                        (round_id, item['name'], item['quantity'], stamp)).lastrowid)
+        bump(db, round_id)
+        audit(db, actor['id'], 'raffle_prizes', detail=json.dumps({
+            'request_id':request_id, 'round_id':round_id, 'items':items, 'prize_ids':prize_ids}, ensure_ascii=False))
+        return {'round_id':round_id, 'count':len(items), 'quantity':sum(item['quantity'] for item in items),
+                'prize_ids':prize_ids, 'replayed':False}
+
+
 def draw(actor, round_id, data, replacement=False):
     prize_id = integer(data.get('prize_id'), '獎品編號')
     count = integer(data.get('count'), '抽出人數', MAX_QUANTITY)
@@ -219,6 +275,9 @@ def snapshot(admin=False, round_id=None):
         prizes = [dict(row) for row in db.execute('''SELECT p.*,
             (SELECT COUNT(*) FROM raffle_winners w WHERE w.prize_id=p.id AND w.voided_at IS NULL) AS awarded
             FROM raffle_prizes p WHERE p.round_id=? ORDER BY p.id''', (rid,))]
+        if not admin:
+            # Future prize names and planned quantities stay on the host only.
+            prizes = [{key:prize[key] for key in ('id','name','awarded')} for prize in prizes if prize['awarded'] > 0]
         winners = []
         for row in db.execute('''SELECT w.*,d.drawn_at,d.operator_name,p.name AS prize_name FROM raffle_winners w
             JOIN raffle_draws d ON d.id=w.draw_id JOIN raffle_prizes p ON p.id=w.prize_id

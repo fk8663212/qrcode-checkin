@@ -53,6 +53,7 @@ def main():
             context=browser.new_context(locale='zh-TW',viewport={'width':1440,'height':1000})
             context.on('page',lambda page:page.on('pageerror',lambda error:errors.append(str(error))))
             host=context.new_page()
+            primary_draw=host.locator('.raffle-prize').first.get_by_role('button',name='抽出得主',exact=True)
             try:
                 ticket=browser.new_context(locale='zh-TW',**playwright.devices['iPhone 13' if engine=='webkit' else 'Pixel 7']).new_page()
                 ticket.goto(base+'/ticket#'+token)
@@ -76,10 +77,52 @@ def main():
                     host.get_by_role('button',name='新增獎品',exact=True).click()
                     expect(host.locator('.raffle-prize h3').filter(has_text=name)).to_be_visible()
 
-                add_prize('禮券',2)
+                host.locator('#prize-batch-list').fill('有效獎,2\n錯誤獎,0')
+                host.locator('#prize-batch-review').click()
+                expect(host.locator('#raffle-error')).to_contain_text('第 2 行')
+                expect(host.locator('#prize-batch-preview')).to_be_hidden()
+                host.locator('#prize-batch-list').fill('禮券,2\n秘密壓軸大獎,1')
+                host.locator('#prize-batch-review').click()
+                expect(host.locator('#prize-batch-rows tr')).to_have_count(2)
+                expect(host.locator('#prize-batch-summary')).to_contain_text('2 款，共 3 份；尚未儲存')
+                with app.app_context():
+                    assert get_db().execute('SELECT COUNT(*) FROM raffle_prizes').fetchone()[0] == 0
+                host.set_viewport_size({'width':320,'height':740})
+                assert host.evaluate('document.documentElement.scrollWidth <= innerWidth')
+                host.locator('#prize-batch-form').screenshot(path=str(output/(engine+'-raffle-prize-list-preview.png')))
+                host.set_viewport_size({'width':1440,'height':1000})
+                # A lost bulk-add response uses the same persisted receipt on retry.
+                host.route('**/api/raffle/admin/prizes',lambda route:route.abort('failed'))
+                host.locator('#prize-batch-confirm').click()
+                expect(host.locator('#raffle-pending-title')).to_have_text('上次新增獎品清單結果尚未確認')
+                with app.app_context():
+                    assert get_db().execute('SELECT COUNT(*) FROM raffle_prizes').fetchone()[0] == 0
+                host.reload()
+                expect(host.locator('#raffle-pending')).to_be_visible()
+                host.unroute('**/api/raffle/admin/prizes')
+                def lose_batch_response(route):
+                    response=route.fetch()
+                    assert response.status == 200
+                    route.abort('failed')
+                host.route('**/api/raffle/admin/prizes',lose_batch_response)
+                host.locator('#raffle-retry').click()
+                expect(host.locator('#raffle-pending')).to_be_visible()
+                expect(host.locator('#raffle-retry')).to_be_enabled()
+                with app.app_context():
+                    assert get_db().execute('SELECT COUNT(*) FROM raffle_prizes').fetchone()[0] == 2
+                host.unroute('**/api/raffle/admin/prizes')
+                host.locator('#raffle-retry').click()
+                expect(host.locator('#raffle-pending')).to_be_hidden()
+                expect(host.locator('#raffle-result')).to_contain_text('已確認新增 2 款，共 3 份獎品')
+                expect(host.locator('.raffle-prize')).to_have_count(2)
                 display=browser.new_context(locale='zh-TW',viewport={'width':1522,'height':1000}).new_page()
                 display.goto(base+'/raffle/display')
                 expect(display.locator('#raffle-display-winners')).to_contain_text('幸運得主即將揭曉')
+                expect(display.locator('#raffle-display-prizes')).to_have_text('獎品將於抽出時揭曉，敬請期待。')
+                assert '禮券' not in display.locator('#raffle-app').inner_text()
+                assert '秘密壓軸大獎' not in display.content()
+                assert display.request.get(base+'/api/raffle/display-state').json()['prizes'] == []
+                display.screenshot(path=str(output/(engine+'-raffle-mystery-before-draw.png')),full_page=True)
 
                 def verify_projection(winners):
                     expect(display.locator('.raffle-display-winner')).to_have_count(len(winners))
@@ -90,6 +133,10 @@ def main():
                         expect(card.locator('.raffle-display-prize')).to_have_text(winner['prize_name'])
                     assert display.locator('#raffle-display-winners b, #raffle-display-winners img, #animation-winners b, #animation-winners img').count() == 0
                     assert '未報到來賓' not in display.locator('#raffle-app').inner_text()
+                    assert '秘密壓軸大獎' not in display.content()
+                    public=display.request.get(base+'/api/raffle/display-state').json()
+                    assert '秘密壓軸大獎' not in json.dumps(public,ensure_ascii=False)
+                    assert all('quantity' not in item for item in public['prizes'])
                     for width in (1522,390,320):
                         display.set_viewport_size({'width':width,'height':1000})
                         assert display.evaluate('document.documentElement.scrollWidth <= innerWidth')
@@ -105,7 +152,7 @@ def main():
 
                 # Lost before delivery: no awards, pending identity survives reload.
                 host.route('**/api/raffle/admin/draw',lambda route:route.abort('failed'))
-                host.get_by_role('button',name='抽出得主',exact=True).click()
+                primary_draw.click()
                 expect(host.locator('#raffle-pending')).to_be_visible()
                 expect(host.locator('#raffle-result')).to_be_hidden()
                 with app.app_context():
@@ -137,16 +184,17 @@ def main():
                 expect(host.locator('#raffle-result')).to_contain_text('已確認抽出')
                 expect(host.locator('#round-name')).to_be_disabled()
                 host.set_viewport_size({'width':390,'height':844})
-                host.get_by_role('button',name='抽出得主',exact=True).click()
+                primary_draw.click()
                 expect(host.locator('#raffle-animation')).to_have_class('raffle-animation is-rolling')
                 expect(host.locator('#raffle-result')).to_be_hidden()
                 expect(host.locator('.raffle-winner')).to_have_count(1)
-                expect(host.get_by_role('button',name='抽出得主',exact=True)).to_be_disabled()
+                expect(primary_draw).to_be_disabled()
                 host.locator('#raffle-animation').screenshot(path=str(output/(engine+'-raffle-animation-rolling.png')))
                 assert host.evaluate('document.documentElement.scrollWidth <= innerWidth')
                 display.bring_to_front()
                 display.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
                 expect(display.locator('#raffle-animation')).to_have_class('raffle-animation is-rolling')
+                expect(display.locator('#animation-prize')).to_have_text('神秘獎品')
                 display.locator('#raffle-animation').screenshot(path=str(output/(engine+'-raffle-animation-projection.png')))
                 expect(display.locator('.raffle-display-winner')).to_have_count(2,timeout=10000)
                 with app.app_context():
@@ -166,7 +214,7 @@ def main():
                     rows=get_db().execute('SELECT attendee_pk FROM raffle_winners').fetchall()
                     assert len({row[0] for row in rows}) == 2
                     original=dict(get_db().execute('SELECT * FROM raffle_winners ORDER BY id LIMIT 1').fetchone())
-                expect(host.get_by_role('button',name='抽出得主',exact=True)).to_be_disabled()
+                expect(primary_draw).to_be_disabled()
                 add_prize('現場追加小禮',1)
 
                 original_row=host.locator(f'.raffle-winner[data-winner-id="{original["id"]}"]')
@@ -216,7 +264,7 @@ def main():
                 add_prize('加碼獎',2)
                 host.emulate_media(reduced_motion='reduce')
                 host.locator('.raffle-draw-form input').fill('2')
-                host.get_by_role('button',name='抽出得主',exact=True).click()
+                primary_draw.click()
                 expect(host.locator('.raffle-winner')).to_have_count(2)
                 expect(host.locator('#raffle-animation')).to_have_class('raffle-animation without-motion is-revealed')
                 host.reload()
@@ -241,7 +289,9 @@ def main():
                                 'projection_long_names_320_390_1522_layout':'PASS','projection_english_preserves_names_and_prizes':'PASS',
                                 'csv_download':'PASS','mobile_390_and_320_layout':'PASS','javascript_errors':errors})
                 results[-1].update({'rolling_holds_winners_and_disables_next_draw':'PASS','projection_roll_and_reveal':'PASS',
-                                    'reduced_motion_direct_reveal':'PASS','reload_does_not_replay':'PASS'})
+                                    'reduced_motion_direct_reveal':'PASS','reload_does_not_replay':'PASS',
+                                    'prize_list_preview_atomic_add_and_safe_retry':'PASS','future_prizes_absent_from_public_api_and_dom':'PASS',
+                                    'mystery_prize_until_reveal':'PASS'})
             finally:
                 browser.close()
                 server.shutdown()

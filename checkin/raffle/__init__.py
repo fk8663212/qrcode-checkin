@@ -47,6 +47,11 @@ def action(action):
         service.configure(g.user, round_id, data)
     elif action == 'prize':
         service.prize(g.user, round_id, data)
+    elif action == 'prizes-preview':
+        service.current(get_db(), round_id)
+        return jsonify(result={'items':service.parse_prize_list(data.get('list'))}, csrf=csrf_token())
+    elif action == 'prizes':
+        result = service.prize_batch(g.user, round_id, data)
     elif action in ('draw', 'redraw'):
         result = service.draw(g.user, round_id, data, replacement=action == 'redraw')
     elif action == 'claimed':

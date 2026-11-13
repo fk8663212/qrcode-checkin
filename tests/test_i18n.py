@@ -14,7 +14,7 @@ from conftest import client_for, perform_checkin, post, ticket
     ('/ticket', 'Your personal ticket', '個人電子票券'),
     ('/bingo', 'Get your lucky card', '領取你的幸運卡'),
     ('/bingo/display', 'Tonight’s lucky number', '今晚的幸運號碼'),
-    ('/raffle/display', 'Tonight’s prizes', '今晚的獎品'),
+    ('/raffle/display', 'Revealed prizes', '已揭曉獎品'),
 ])
 def test_public_pages_offer_both_languages(app, path, english, chinese):
     client = app.test_client()
@@ -97,7 +97,7 @@ def test_public_projection_hides_operator_navigation_even_when_signed_in(app):
     client = client_for(app, 1)
     html = client.get('/raffle/display?lang=en').get_data(as_text=True)
     assert '管理總覽' not in html and '工作人員' not in html and '登出' not in html
-    assert 'Tonight’s prizes' in html
+    assert 'Revealed prizes' in html
     assert 'Winners are announced by name, prize and draw number.' in html
     assert '管理總覽' in client.get('/admin').get_data(as_text=True)
 

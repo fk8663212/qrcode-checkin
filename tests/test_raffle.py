@@ -277,6 +277,8 @@ def test_host_and_full_state_are_admin_only(app,path):
 @pytest.mark.parametrize('path,data',[
     ('/api/raffle/admin/configure',{'title':'測試',**RULES}),
     ('/api/raffle/admin/prize',{'name':'測試','quantity':1}),
+    ('/api/raffle/admin/prizes-preview',{'list':'秘密獎品,2'}),
+    ('/api/raffle/admin/prizes',{'list':'秘密獎品,2','request_id':'b'*32}),
     ('/api/raffle/admin/draw',{'prize_id':1,'count':1,'request_id':'a'*32}),
     ('/api/raffle/admin/redraw',{'winner_id':1,'reason':'測試','confirm':True}),
     ('/api/raffle/admin/claimed',{'winner_id':1,'claimed':True}),
@@ -416,3 +418,98 @@ def test_partial_raffle_backup_is_rejected_without_overwriting_database(app,tmp_
     response=runner.invoke(args=['restore-db',str(saved),'--confirm-stopped'])
     assert response.exit_code != 0 and '抽獎資料表不完整' in response.output
     assert state(app)['round']['id'] == 1
+
+
+@pytest.mark.parametrize('source,expected',[
+    ('禮券,5\n耳機,2\n壓軸獎', [('禮券',5),('耳機',2),('壓軸獎',1)]),
+    ('禮券\t5\r\n耳機\t2', [('禮券',5),('耳機',2)]),
+    ('\n  禮券  , 02 \n\n', [('禮券',2)]),
+    ('"Gift voucher, special edition",1', [('Gift voucher, special edition',1)]),
+])
+def test_batch_preview_then_confirm_adds_whole_list_and_retains_order(app,source,expected):
+    preview=action(app,'prizes-preview',list=source)
+    assert preview.status_code == 200
+    assert [(item['name'],item['quantity']) for item in preview.json['result']['items']] == expected
+    assert state(app)['prizes'] == []
+    result=action(app,'prizes',list=source,request_id=secrets.token_hex(24))
+    assert result.status_code == 200
+    assert [(item['name'],item['quantity']) for item in result.json['prizes']] == expected
+    assert result.json['result']['count'] == len(expected)
+    assert result.json['result']['quantity'] == sum(quantity for _,quantity in expected)
+    assert result.json['draws'] == [] and result.json['round']['status'] == 'waiting'
+    with app.app_context():
+        receipts=get_db().execute("SELECT actor_id,detail FROM audit_log WHERE action='raffle_prizes'").fetchall()
+    assert len(receipts) == 1 and receipts[0]['actor_id'] == 1
+    assert json.loads(receipts[0]['detail'])['items'] == preview.json['result']['items']
+
+
+@pytest.mark.parametrize('source',[
+    None, [], '', '   \n', '有效獎,1\n錯誤獎,0', '獎品,201', '獎品,-1', '獎品,1.5',
+    '獎品,true', '獎品,', ',1', '獎品,1,備註', '"未結束,1', 'x'*101,
+    '獎品\x00,1', 'x'*50001, '\n'.join(f'獎品{i},1' for i in range(201)),
+])
+def test_invalid_batch_never_partially_adds_or_audits(app,source):
+    for operation in ('prizes-preview','prizes'):
+        response=action(app,operation,list=source,request_id=secrets.token_hex(24))
+        assert response.status_code == 400
+    assert state(app)['prizes'] == []
+    with app.app_context():
+        assert get_db().execute("SELECT COUNT(*) FROM audit_log WHERE action='raffle_prizes'").fetchone()[0] == 0
+
+
+def test_batch_accepts_two_hundred_items_and_preserves_existing_prizes(app):
+    original=prize(app,name='原有獎品')
+    result=action(app,'prizes',list='\n'.join(f'獎品{i},1' for i in range(200)),request_id=secrets.token_hex(24))
+    assert result.status_code == 200 and result.json['result']['count'] == 200
+    assert len(result.json['prizes']) == 201 and result.json['prizes'][0]['id'] == original
+
+
+def test_batch_parallel_retry_and_restart_add_only_once(app):
+    key=secrets.token_hex(24)
+    gate=Barrier(6)
+    def run(_):
+        gate.wait()
+        return action(app,'prizes',list='禮券,5\n壓軸獎,1',request_id=key)
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        results=list(pool.map(run,range(6)))
+    assert all(result.status_code == 200 for result in results)
+    assert sum(not result.json['result']['replayed'] for result in results) == 1
+    assert len(state(app)['prizes']) == 2
+    assert action(app,'prizes',list='變更清單,1',request_id=key).status_code == 409
+    restarted=create_app(dict(app.config))
+    assert action(restarted,'prizes',list='禮券,5\n壓軸獎,1',request_id=key).json['result']['replayed']
+    next_round(app)
+    assert action(app,'prizes',list='禮券,5\n壓軸獎,1',request_id=key).json['result']['replayed']
+    assert state(app)['prizes'] == []
+    for operation in ('prizes-preview','prizes'):
+        assert action(app,operation,list='過期清單,1',request_id=secrets.token_hex(24)).status_code == 409
+
+
+def test_failed_batch_audit_rolls_back_all_prizes(app,monkeypatch):
+    from checkin.raffle import service
+    def fail_audit(*args,**kwargs):
+        raise RuntimeError('test audit failure')
+    monkeypatch.setattr(service,'audit',fail_audit)
+    with pytest.raises(RuntimeError,match='test audit failure'):
+        action(app,'prizes',list='第一獎,2\n第二獎,1',request_id=secrets.token_hex(24))
+    assert state(app)['prizes'] == [] and state(app)['round']['revision'] == 0
+
+
+def test_public_state_hides_future_prizes_and_planned_quantities(app):
+    ready(app)
+    result=action(app,'prizes',list='禮券,5\n秘密壓軸大獎,2',request_id=secrets.token_hex(24))
+    assert result.status_code == 200 and len(result.json['prizes']) == 2
+    public=client_for(app).get('/api/raffle/display-state').json
+    assert public['prizes'] == [] and public['latest_draw'] is None
+    assert '秘密壓軸大獎' not in json.dumps(public,ensure_ascii=False)
+    assert '禮券' not in json.dumps(public,ensure_ascii=False)
+    assert draw(app,result.json['prizes'][0]['id']).status_code == 200
+    prize(app,name='臨時秘密加碼')
+    for user in (None,1,2):
+        response=client_for(app,user).get('/api/raffle/display-state')
+        public=response.json
+        assert public['prizes'] == [{'id':result.json['prizes'][0]['id'],'name':'禮券','awarded':1}]
+        assert '秘密' not in json.dumps(public,ensure_ascii=False)
+        assert all('quantity' not in item and 'created_at' not in item for item in public['prizes'])
+    next_round(app)
+    assert client_for(app).get('/api/raffle/display-state').json['prizes'] == []

@@ -9,16 +9,16 @@ import {createRafflePresenter} from './animation.mjs';
   let state, archive = null, online = false, busy = false, refreshing = false;
   let configSignature = '', prizeSignature = '', winnerSignature = '', displaySignature = '', redrawWinner, roundAtDialog;
   const pendingKey = 'raffle-pending-' + location.origin + '-' + root.dataset.operator;
-  let pending = null;
+  let pending = null, batchPreview = null;
   let reelTimer = null, confirmedResult = null;
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const presenter = createRafflePresenter({
     render: next => {
-      if(state && next.round.id!==state.round.id){$('raffle-animation').hidden=true;confirmedResult=null;}
+      if(state && next.round.id!==state.round.id){$('raffle-animation').hidden=true;confirmedResult=null;if(host)clearBatchPreview();}
       state=next;
       if(host)renderHost();else renderDisplay();
     },
-    start: next => startReels(next.latest_draw.prize_name, T('本次抽出 {count} 位 · 幸運即將揭曉', {count: next.latest_draw.count})),
+    start: next => startReels(host ? next.latest_draw.prize_name : T('神秘獎品'), T('本次抽出 {count} 位 · 幸運即將揭曉', {count: next.latest_draw.count})),
     stop: stopReels,
     reveal: revealWinners,
     canAnimate: () => !reducedMotion.matches && document.visibilityState==='visible',
@@ -90,6 +90,11 @@ import {createRafflePresenter} from './animation.mjs';
       allow_repeat:$(prefix+'allow-repeat').checked, include_previous:$(prefix+'include-previous').checked,
       exclude_bingo:$(prefix+'exclude-bingo').checked};
   }
+  function clearBatchPreview() {
+    batchPreview = null;
+    $('prize-batch-preview').hidden = true;
+    $('prize-batch-rows').replaceChildren();
+  }
   function unsavedRules() {
     if (!state || state.round.status !== 'waiting') return false;
     const draft = options();
@@ -102,11 +107,14 @@ import {createRafflePresenter} from './animation.mjs';
     const draft = unsavedRules();
     $('raffle-config-fields').disabled = locked || historical || state.round.status !== 'waiting';
     $('prize-add-fields').disabled = locked || historical;
+    $('prize-batch-fields').disabled = locked || historical;
+    $('prize-batch-confirm').disabled = locked || historical || !batchPreview;
     $('new-round-button').disabled = locked || historical;
     $('new-round-submit').disabled = locked;
     $('raffle-round').disabled = busy || !!pending || presenter.isAnimating();
     $('raffle-retry').disabled = busy || !online || presenter.isAnimating();
     $('raffle-pending').hidden = !pending;
+    $('raffle-pending-title').textContent = pending?.action === 'prizes' ? '上次新增獎品清單結果尚未確認' : '上次抽獎結果尚未確認';
     $('rule-hint').textContent = historical ? '歷史規則保留，可補登領獎。' : state.round.status !== 'waiting' ? '首次抽獎已完成，本輪規則已鎖定。' : draft ? '規則尚未儲存，請先儲存再抽獎。' : '規則已保存，首次抽獎後鎖定。';
     root.querySelectorAll('[data-write]').forEach(button => { button.disabled = locked || (historical && button.dataset.write !== 'claim'); });
     root.querySelectorAll('[data-prize-editor] input').forEach(input => { input.disabled = locked || historical; });
@@ -146,17 +154,40 @@ import {createRafflePresenter} from './animation.mjs';
     catch (e) { error(e.status ? e.message : '尚未確認儲存結果，請先核對畫面再重試。'); return false; }
     finally { busy = false; await refresh(); }
   }
-  async function submitDraw(value) {
+  async function previewPrizes() {
+    if(busy || pending || !online || presenter.isAnimating())return;
+    busy=true;error('');clearBatchPreview();controls();
+    const source=$('prize-batch-list').value, roundId=state.round.id;
+    try {
+      const result=await Checkin.api('/api/raffle/admin/prizes-preview',{round_id:roundId,list:source});
+      batchPreview={source,roundId,items:result.result.items};
+      $('prize-batch-rows').replaceChildren(...batchPreview.items.map(item => {
+        const row=el('tr');row.append(el('td',item.name),el('td',item.quantity));return row;
+      }));
+      $('prize-batch-summary').textContent='預計新增 '+batchPreview.items.length+' 款，共 '+batchPreview.items.reduce((sum,item) => sum+item.quantity,0)+' 份；尚未儲存。';
+      $('prize-batch-preview').hidden=false;
+    } catch(e) {error(Checkin.errorMessage(e));}
+    finally {busy=false;await refresh();}
+  }
+  async function submitOperation(value) {
     if (busy || !online || presenter.isAnimating()) return;
     if (!pending) savePending(value);
+    const isBatch=pending.action==='prizes';
     busy = true; error(''); $('raffle-result').hidden = true; controls();
     confirmedResult=null;
     const prize=state.prizes.find(p => p.id===pending.data.prize_id);
-    startReels(prize?.name || '幸運抽獎','正在等待伺服器確認，請稍候…');
+    if(!isBatch)startReels(prize?.name || '幸運抽獎','正在等待伺服器確認，請稍候…');
     try {
       const started=performance.now();
       const result = await Checkin.api('/api/raffle/admin/'+pending.action, pending.data);
       savePending(null);
+      if(isBatch){
+        clearBatchPreview();$('prize-batch-list').value='';
+        presenter.update(result,{elapsedMs:performance.now()-started});
+        confirmedResult='✓ 已確認新增 '+result.result.count+' 款，共 '+result.result.quantity+' 份獎品（第 '+result.result.round_id+' 輪）。';
+        announceResult();
+        return;
+      }
       const winners = result.winners.filter(w => w.draw_id === result.result.draw_id);
       confirmedResult = winners.length ? '✓ 已確認抽出：'+winners.map(w => w.name+' · '+seatingText(w)+' · '+w.prize_name).join('、') : '✓ 伺服器已確認原抽獎紀錄，請至對應歷史輪次查看。';
       presenter.update(result,{elapsedMs:performance.now()-started});
@@ -167,8 +198,8 @@ import {createRafflePresenter} from './animation.mjs';
     } catch (e) {
       // A 5xx or lost response may follow a committed transaction. Keep the exact request for retry.
       if (e.status && e.status < 500 && ![401,403,408,429].includes(e.status)) savePending(null);
-      error(e.status ? e.message : '抽獎結果尚未確認，請保留此頁並按「確認上次操作／安全重試」。');
-      if(!presenter.isAnimating()){stopReels();$('raffle-animation').hidden=true;}
+      error(e.status ? e.message : (isBatch ? '新增獎品結果尚未確認' : '抽獎結果尚未確認')+'，請保留此頁並按「確認上次操作／安全重試」。');
+      if(!isBatch && !presenter.isAnimating()){stopReels();$('raffle-animation').hidden=true;}
     } finally { busy = false; await refresh(); }
   }
   function renderHost() {
@@ -215,7 +246,7 @@ import {createRafflePresenter} from './animation.mjs';
       const form = el('form',undefined,'raffle-draw-form'), label = el('label','本次抽出人數'), count = el('input');
       count.type='number';count.min=1;count.max=200;count.step=1;count.inputMode='numeric';count.value=1;count.required=true;count.name='count';label.append(count);
       const button = el('button','抽出得主');button.type='submit';button.dataset.draw='';button.dataset.write='draw';form.append(label,button);
-      form.addEventListener('submit',e => {e.preventDefault();if(unsavedRules())return;submitDraw({action:'draw',data:{round_id:state.round.id,prize_id:prize.id,count:Number(count.value),request_id:Checkin.requestId()}});});
+      form.addEventListener('submit',e => {e.preventDefault();if(unsavedRules())return;submitOperation({action:'draw',data:{round_id:state.round.id,prize_id:prize.id,count:Number(count.value),request_id:Checkin.requestId()}});});
       card.append(form);list.append(card);
     }
   }
@@ -250,7 +281,7 @@ import {createRafflePresenter} from './animation.mjs';
         el('p',winner.card_label,'raffle-display-card-label'),el('p',T(winner.claimed_at ? '已領獎 ✓' : '恭喜中獎')));
       list.append(card);
     }
-    $('raffle-display-prizes').replaceChildren(...(state.prizes.length ? state.prizes.map(p => el('p',T('{name} · {awarded} / {quantity} 份', {name: p.name, awarded: p.awarded, quantity: p.quantity}))) : [el('p',T('尚未設定獎品，請等候主持人。'),'muted')]));
+    $('raffle-display-prizes').replaceChildren(...(state.prizes.length ? state.prizes.map(p => el('p',T('{name} · 已抽出 {count} 份', {name:p.name,count:p.awarded}))) : [el('p',T('獎品將於抽出時揭曉，敬請期待。'),'muted')]));
   }
   if(host){
     root.querySelectorAll('fieldset').forEach(fields => {fields.disabled=true;});
@@ -258,11 +289,17 @@ import {createRafflePresenter} from './animation.mjs';
     $('raffle-config-form').addEventListener('input',controls);
     $('raffle-config-form').addEventListener('submit',async e => {e.preventDefault();await mutate('configure',options());});
     $('prize-add-form').addEventListener('submit',async e => {e.preventDefault();if(await mutate('prize',{name:$('prize-name').value,quantity:Number($('prize-quantity').value)})){$('prize-name').value='';$('prize-quantity').value=1;}});
+    $('prize-batch-form').addEventListener('submit',e => {e.preventDefault();previewPrizes();});
+    $('prize-batch-list').addEventListener('input',() => {clearBatchPreview();controls();});
+    $('prize-batch-confirm').addEventListener('click',() => {
+      if(!batchPreview)return;
+      submitOperation({action:'prizes',data:{round_id:batchPreview.roundId,list:batchPreview.source,request_id:Checkin.requestId()}});
+    });
     $('raffle-round').addEventListener('change',e => {archive=Number(e.target.value)===state.latest_round_id ? null : Number(e.target.value);$('raffle-result').hidden=true;refresh();});
-    $('raffle-retry').addEventListener('click',() => submitDraw(pending));
+    $('raffle-retry').addEventListener('click',() => submitOperation(pending));
     $('new-round-button').addEventListener('click',() => {roundAtDialog=state.round.id;$('new-round-name').value='加碼抽獎';for(const id of ['new-allow-repeat','new-include-previous','new-exclude-bingo'])$(id).checked=false;$('new-round-confirm').value='';$('new-round-dialog').showModal();});
     $('new-round-form').addEventListener('submit',async e => {e.preventDefault();if(await mutate('round',{round_id:roundAtDialog,...options('new-'),confirmation:$('new-round-confirm').value})){$('new-round-dialog').close();$('raffle-result').hidden=true;}});
-    $('redraw-form').addEventListener('submit',e => {e.preventDefault();const data={round_id:redrawWinner.round_id,prize_id:redrawWinner.prize_id,count:1,winner_id:redrawWinner.id,reason:$('redraw-reason').value,confirm:$('redraw-confirm').checked,request_id:Checkin.requestId()};$('redraw-dialog').close();submitDraw({action:'redraw',data});});
+    $('redraw-form').addEventListener('submit',e => {e.preventDefault();const data={round_id:redrawWinner.round_id,prize_id:redrawWinner.prize_id,count:1,winner_id:redrawWinner.id,reason:$('redraw-reason').value,confirm:$('redraw-confirm').checked,request_id:Checkin.requestId()};$('redraw-dialog').close();submitOperation({action:'redraw',data});});
     root.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click',() => $(b.dataset.close).close()));
   } else $('raffle-fullscreen').addEventListener('click',async () => {try{if(document.fullscreenElement)await document.exitFullscreen();else if(document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen();else error(T('此瀏覽器不支援全螢幕，請使用投影電腦的全螢幕功能。'));}catch(_){error(T('請在投影電腦啟用瀏覽器全螢幕。'));}});
   window.addEventListener('online',refresh);
