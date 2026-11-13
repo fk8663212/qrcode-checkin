@@ -285,7 +285,7 @@ function renderWinners(id, host) {
     const row = node('div', 'winner-row');
     row.dataset.playerId = String(w.player_id);
     const info = node('div', 'winner-name');
-    const seat = w.seating ? w.seating.value + (w.seating.mode === 'table' && w.table_no ? ' 桌' : '') : w.table_no ? w.table_no + ' 桌' : '';
+    const seat = w.seating ? w.seating.value + (w.seating.mode === 'table' && w.table_no && !w.seating.value.trim().endsWith('桌') ? ' 桌' : '') : w.table_no ? w.table_no + ' 桌' : '';
     info.append(node('strong', '', host ? w.name : T('幸運來賓')), node('small', '', host ? w.card_label + (seat ? ' · ' + seat : '') + ' · 第 ' + w.round + ' 回合連線' : T('{card} · 第 {round} 回合連線', {card: w.card_label, round: w.round})));
     row.append(node('span', 'winner-rank', String(w.position).padStart(2, '0')), info);
     if (host) {

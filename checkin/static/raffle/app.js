@@ -4,7 +4,7 @@ import {createRafflePresenter} from './animation.mjs';
   const root = document.getElementById('raffle-app');
   const host = root.dataset.page === 'host';
   const $ = id => document.getElementById(id);
-  const seatingText = winner => winner.seating ? winner.seating.value + (winner.seating.mode === 'table' && winner.table_no ? ' 桌' : '') : (winner.table_no || '未安排') + ' 桌';
+  const seatingText = winner => winner.seating ? winner.seating.value + (winner.seating.mode === 'table' && winner.table_no && !winner.seating.value.trim().endsWith('桌') ? ' 桌' : '') : (winner.table_no || '未安排') + ' 桌';
   const T = (source, values = {}) => window.GuestUI ? GuestUI.t(source, values) : source.replace(/\{([a-z_]+)\}/g, (match, key) => Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : match);
   let state, archive = null, online = false, busy = false, refreshing = false;
   let configSignature = '', prizeSignature = '', winnerSignature = '', displaySignature = '', redrawWinner, roundAtDialog;

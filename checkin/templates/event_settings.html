@@ -8,9 +8,10 @@
 <form method="post" class="card stack">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label>名冊模板<select name="roster_profile" id="roster-profile">{% for key,label in roster_profiles.items() %}<option value="{{ key }}" {% if preferences.get('roster_profile') == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-  <p class="small muted">校園名冊可直接使用「姓名、年級、學號、職稱、電子郵件地址」。學號作為名冊識別編號，票券仍使用隨機憑證。</p>
+  <p class="small muted">校園名冊可直接使用「姓名、年級、學號、職稱、桌次、電子郵件地址」。學號作為名冊識別編號，票券仍使用隨機憑證。</p>
   <label>座位方式<select name="seating_mode" id="seating-mode">{% for key,label in seating_modes.items() %}<option value="{{ key }}" {% if preferences.get('seating_mode') == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
   <p class="small muted">依年級分區時，同年級使用同一區，區域內自由入座；如名冊另填「區域」，則優先使用指定區域。切換顯示不會清除原桌次或區域資料。</p>
+  <p class="small muted">若只有部分來賓指定桌次，請選「桌次優先，空白依年級分區」：有桌次者顯示名冊桌次，未填者使用指定區域或年級。桌次可填 11–13、14–15 桌等範圍，不會自動拆分或分配座位。</p>
   <label>預設單位／系所<input name="default_affiliation" value="{{ preferences.get('default_affiliation', '') }}" maxlength="120" placeholder="全體同系時可統一填寫"></label>
   <p class="small muted">套用於之後匯入時沒有單位欄位的資料，亦作為新增來賓的預填值。修改此處不會直接改寫既有名冊。</p>
   <button class="primary" type="submit">儲存活動設定</button>

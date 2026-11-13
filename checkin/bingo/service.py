@@ -239,7 +239,7 @@ def snapshot(attendee_pk=None, admin=False, game_id=None):
                 card['lines'] = completed_lines(card['numbers'], {draw['number'] for draw in draws})
                 data['card'] = card
         if admin:
-            data['seating_label'] = '桌次' if preferences['seating_mode'] == 'table' else '座位安排' if preferences['seating_mode'] == 'open' else '區域'
+            data['seating_label'] = '桌次' if preferences['seating_mode'] == 'table' else '桌次／區域' if preferences['seating_mode'] == 'table_grade' else '座位安排' if preferences['seating_mode'] == 'open' else '區域'
             data['games'] = [dict(row) for row in db.execute('SELECT * FROM bingo_games ORDER BY id DESC')]
             data['round_results'] = [{**dict(row), **{key: json.loads(row[key]) for key in ('candidates','lottery_order','selected')}}
                                      for row in db.execute('SELECT * FROM bingo_draws WHERE game_id=? ORDER BY round', (gid,))]

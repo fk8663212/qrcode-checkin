@@ -7,7 +7,7 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 from checkin import create_app
 from checkin.db import get_db
@@ -16,6 +16,7 @@ from checkin.services import parse_csv
 from conftest import client_for, perform_checkin, post, ticket
 
 HEADERS = ['姓名', '年級', '學號', '職稱', '電子郵件地址']
+TABLE_HEADERS = ['姓名', '年級', '學號', '職稱', '桌次', '電子郵件地址']
 SETTINGS = '/admin/event-settings'
 
 
@@ -54,6 +55,11 @@ def confirm(admin, preview_id):
 def test_delivered_excel_and_csv_import_same_fictional_roster(app):
     assert configure(app).status_code == 302
     root = Path(__file__).resolve().parent.parent
+    assert list(next(csv.reader(io.StringIO((root / 'examples/attendees-campus.csv').read_text(encoding='utf-8-sig'))))) == TABLE_HEADERS
+    workbook=load_workbook(root / 'examples/attendees-campus.xlsx')
+    assert [cell.value for cell in workbook.active[1]] == TABLE_HEADERS
+    assert workbook.active.auto_filter.ref == 'A1:F14'
+    workbook.close()
     admin, response, preview_id = upload(app, (root / 'examples/attendees-campus.xlsx').read_bytes())
     assert '新增 <strong>13</strong>' in response.text and confirm(admin, preview_id).status_code == 302
     admin, response, preview_id = upload(app, (root / 'examples/attendees-campus.csv').read_bytes(), 'roster.csv')
@@ -66,6 +72,119 @@ def test_delivered_excel_and_csv_import_same_fictional_roster(app):
         first = db.execute("SELECT * FROM attendees WHERE attendee_id='TEST-STU-001'").fetchone()
         assert (first['grade'], first['title'], first['email'], first['affiliation']) == (
             '碩一', '碩士生', 'guest01@example.org', '同系測試單位')
+
+
+@pytest.mark.parametrize('extension', ['xlsx', 'csv'])
+def test_six_column_roster_mixes_tables_and_grades_and_retains_existing_ticket_and_card(app,extension):
+    token=ticket(app)
+    staff=client_for(app,2)
+    assert perform_checkin(staff,token=token).status_code == 201
+    admin=client_for(app,1)
+    assert post(admin,'/api/bingo/admin/registration',json={'game_id':1,'open':True}).status_code == 200
+    guest=client_for(app)
+    original=post(guest,'/api/bingo/claim',json={'token':token}).json['card']
+    assert configure(app,'table_grade').status_code == 302
+    rows=[['同名來賓','碩一','A001','碩士生','14–15 桌','student@example.org'],
+          ['同名來賓','碩一','A002','碩士生','','other@example.org']]
+    stream=io.StringIO(newline='')
+    writer=csv.writer(stream)
+    writer.writerows([TABLE_HEADERS]+rows)
+    raw=excel(rows,TABLE_HEADERS) if extension=='xlsx' else stream.getvalue().encode('utf-8-sig')
+    admin,preview,preview_id=upload(app,raw,'mixed.'+extension)
+    assert '桌次 · 14–15 桌' in preview.text and '<th>桌次</th><th>Email</th>' in preview.text
+    with app.app_context():
+        assert get_db().execute('SELECT table_no FROM attendees WHERE id=1').fetchone()[0] == '01'
+    assert confirm(admin,preview_id).status_code == 302
+    first=post(client_for(app),'/api/ticket',json={'token':token}).json
+    other=post(client_for(app),'/api/ticket',json={'token':ticket(app,2)}).json
+    assert first['seating'] == {'mode':'table','label':'桌次','value':'14–15 桌','note':''}
+    assert other['seating']['value'] == '碩一區' and other['seating']['mode'] == 'grade'
+    duplicate=perform_checkin(staff,token=token)
+    assert duplicate.status_code == 200 and not duplicate.json['created']
+    assert duplicate.json['attendee']['seating']['value'] == '14–15 桌'
+    card=guest.get('/api/bingo/state').json['card']
+    assert (card['id'],card['numbers']) == (original['id'],original['numbers'])
+    assert card['seating']['value'] == '14–15 桌' and ticket(app)==token
+    bingo_host=admin.get('/api/bingo/admin/state').json
+    assert bingo_host['seating_label'] == '桌次／區域'
+    assert bingo_host['players'][0]['seating']['value'] == '14–15 桌'
+    report=post(admin,'/admin/export/tables').get_data(as_text=True)
+    values=list(csv.reader(io.StringIO(report.lstrip('\ufeff'))))
+    assert values[0] == ['seating_type','seating','total','checked_in','pending']
+    assert ['table','14–15 桌','1','1','0'] in values and ['grade','碩一區','1','0','1'] in values
+    with app.app_context():
+        assert get_db().execute('SELECT COUNT(*) FROM checkins').fetchone()[0] == 1
+
+
+def test_mixed_groups_keep_actual_denominators_and_separate_table_names_from_grade_names(app):
+    configure(app,'table_grade')
+    rows=[['甲','碩一','A001','學生','11–13',''],['乙','碩二','A002','學生','11–13',''],
+          ['丙','博一','A003','學生','14–15 桌',''],['丁','碩一','A004','學生','',''],
+          ['戊','碩一','A005','學生','',''],['己','','A006','學生','碩一',''],['庚','','A007','學生','','']]
+    admin,_,preview_id=upload(app,excel(rows,TABLE_HEADERS))
+    assert confirm(admin,preview_id).status_code == 302
+    assert perform_checkin(client_for(app,2),pk=1).status_code == 201
+    with app.app_context():
+        groups=attendance_groups()
+    assert {group['key']:(group['checked'],group['total']) for group in groups} == {
+        'table:11–13':(1,2),'table:14–15 桌':(0,1),'table:碩一':(0,1),'grade:碩一':(0,2),'':(0,1)}
+    assert {group['key']:group['label'] for group in groups}['table:14–15 桌'] == '14–15 桌'
+    assert groups[-1]['label'] == '未安排座位'
+    page=admin.get('/admin?q=A001&status=pending').text
+    assert '現場桌次／區域概況' in page and 'data-table-no="grade:碩一"' in page
+    assert 'data-table-no="table:碩一"' in page and '14–15 桌 桌' not in page
+
+
+def test_mixed_priority_and_legacy_omission_do_not_clear_stored_table(app):
+    configure(app,'table_grade')
+    admin=client_for(app,1)
+    fields={'attendee_id':'A001','name':'同名來賓','table_no':'08','grade':'碩一','seating_area':'教師'}
+    assert post(admin,'/admin/attendees/1',data=fields).status_code == 302
+    assert 'type="hidden" name="table_no"' not in admin.get('/admin/attendees/1').text
+    rows=[['同名來賓','碩一','A001','碩士生','student@example.org']]
+    admin,preview,preview_id=upload(app,excel(rows))
+    assert '保留既有桌次' in preview.text and confirm(admin,preview_id).status_code == 302
+    assert post(client_for(app),'/api/ticket',json={'token':ticket(app)}).json['seating']['value'] == '08'
+    admin,_,preview_id=upload(app,excel([rows[0][:4]+['',rows[0][4]]],TABLE_HEADERS))
+    assert confirm(admin,preview_id).status_code == 302
+    assert post(client_for(app),'/api/ticket',json={'token':ticket(app)}).json['seating']['value'] == '教師區'
+    fields.update(table_no='',seating_area='')
+    assert post(admin,'/admin/attendees/1',data=fields).status_code == 302
+    assert post(client_for(app),'/api/ticket',json={'token':ticket(app)}).json['seating']['value'] == '碩一區'
+    fields['grade']=''
+    assert post(admin,'/admin/attendees/1',data=fields).status_code == 302
+    assert post(client_for(app),'/api/ticket',json={'token':ticket(app)}).json['seating']['value'] == '現場安排'
+
+
+def test_import_warns_if_current_seating_mode_will_ignore_uploaded_table(app):
+    configure(app,'grade')
+    _,preview,_=upload(app,excel([['甲','碩一','A001','學生','11–13','']],TABLE_HEADERS))
+    assert '目前座位方式不會顯示桌次' in preview.text
+
+
+def test_mixed_mode_is_saved_in_consistent_backup_and_survives_restart(app,tmp_path):
+    configure(app,'table_grade')
+    runner=app.test_cli_runner()
+    backup=tmp_path/'mixed-seating.sqlite3'
+    assert runner.invoke(args=['backup-db',str(backup)]).exit_code == 0
+    configure(app,'table')
+    assert runner.invoke(args=['restore-db',str(backup),'--confirm-stopped']).exit_code == 0
+    restarted=create_app(dict(app.config))
+    with restarted.app_context():
+        assert get_preferences()['seating_mode'] == 'table_grade'
+
+
+def test_mixed_raffle_keeps_draw_time_table_range_after_later_roster_changes(app):
+    configure(app,'table_grade')
+    admin,_,preview_id=upload(app,excel([['同名來賓','碩一','A001','學生','14–15 桌','']],TABLE_HEADERS))
+    assert confirm(admin,preview_id).status_code == 302
+    assert perform_checkin(client_for(app,2),pk=1).status_code == 201
+    result=post(admin,'/api/raffle/admin/prize',json={'round_id':1,'name':'測試獎品','quantity':1})
+    result=post(admin,'/api/raffle/admin/draw',json={'round_id':1,'prize_id':result.json['prizes'][0]['id'],
+                                                  'count':1,'request_id':'mixed-seating-raffle-00001'})
+    assert result.status_code == 200 and result.json['winners'][0]['seating']['value'] == '14–15 桌'
+    assert post(admin,'/admin/attendees/1',data={'attendee_id':'A001','name':'更新姓名','table_no':'','grade':'碩二'}).status_code == 302
+    assert admin.get('/api/raffle/admin/state').json['winners'][0]['seating']['value'] == '14–15 桌'
 
 
 def test_school_reimport_retains_ticket_checkin_card_and_hidden_old_table(app):

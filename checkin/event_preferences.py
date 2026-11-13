@@ -7,7 +7,8 @@ from .db import audit, bump_roster, get_db, transaction
 
 ROSTER_PROFILES = {'standard': '一般活動名冊', 'campus': '校園名冊'}
 SEATING_MODES = {'table': '指定桌次', 'area': '依名冊區域自由座',
-                 'grade': '依年級分區自由座', 'open': '全場自由入座'}
+                 'grade': '依年級分區自由座', 'table_grade': '桌次優先，空白依年級分區',
+                 'open': '全場自由入座'}
 
 
 def get_preferences(refresh=False):
@@ -38,6 +39,8 @@ def save_preferences(actor, values):
 def seating_info(row, preferences=None):
     preferences = preferences or get_preferences()
     mode = preferences['seating_mode']
+    if mode == 'table_grade':
+        mode = 'table' if row['table_no'] else 'grade'
     if mode == 'open':
         return dict(mode=mode, label='座位安排', value='自由入座', note='請依現場指引入座')
     value = row['table_no'] if mode == 'table' else row['seating_area']
@@ -52,19 +55,26 @@ def seating_info(row, preferences=None):
 def attendance_groups(preferences=None):
     preferences = preferences or get_preferences()
     mode = preferences['seating_mode']
-    expression = {'table': 'a.table_no', 'area': 'a.seating_area',
-                  'grade': "COALESCE(NULLIF(a.seating_area,''),a.grade)", 'open': "''"}[mode]
+    grade = "COALESCE(NULLIF(a.seating_area,''),a.grade)"
+    expression = {'table': 'a.table_no', 'area': 'a.seating_area', 'grade': grade, 'open': "''",
+                  'table_grade': f"CASE WHEN a.table_no<>'' THEN 'table:'||a.table_no WHEN {grade}<>'' THEN 'grade:'||{grade} ELSE '' END"}[mode]
     rows = get_db().execute(f'''SELECT {expression} AS group_key, COUNT(*) AS total,COUNT(c.id) AS checked
         FROM attendees a LEFT JOIN checkins c ON c.attendee_pk=a.id AND c.undone_at IS NULL
         GROUP BY {expression} ORDER BY group_key='',group_key''').fetchall()
     groups = []
     for row in rows:
         key = row['group_key']
-        label = ('全場自由座' if mode == 'open' else (key or ('未安排桌次' if mode == 'table' else '未安排區域')))
-        if mode == 'table' and key and not key.endswith('桌'):
+        group_mode, value = mode, key
+        if mode == 'table_grade':
+            group_mode, _, value = key.partition(':') if key else ('unassigned', '', '')
+        label = ('全場自由座' if mode == 'open' else (value or ('未安排桌次' if mode == 'table' else '未安排座位' if mode == 'table_grade' else '未安排區域')))
+        if group_mode == 'table' and value and not value.endswith('桌'):
             label += ' 桌'
-        elif mode in ('area', 'grade') and key and not key.endswith('區'):
+        elif group_mode in ('area', 'grade') and value and not value.endswith('區'):
             label += '區'
-        groups.append(dict(key=key, label=label, total=row['total'], checked=row['checked'],
+        groups.append(dict(key=key, label=label, mode=group_mode, total=row['total'], checked=row['checked'],
                            complete=(bool(key) or mode == 'open') and row['total'] > 0 and row['checked'] == row['total']))
+    if mode == 'table_grade':
+        order = {'table': 0, 'grade': 1, 'unassigned': 2}
+        groups.sort(key=lambda group: (order[group['mode']], group['key']))
     return groups

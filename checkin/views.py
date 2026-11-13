@@ -334,10 +334,14 @@ def export(kind):
                     values.extend(['已報到' if row['checked_at'] else '未報到', local_time(row['checked_at']), row['operator_name']])
         elif kind == 'tables':
             mode = get_preferences()['seating_mode']
-            headers = [{'table': 'table_no', 'area': 'seating_area', 'grade': 'grade_or_area', 'open': 'seating'}[mode],
-                       'total', 'checked_in', 'pending']
             found = attendance_groups()
-            rows = [[row['key'] if mode != 'open' else row['label'], row['total'], row['checked'], row['total'] - row['checked']] for row in found]
+            if mode == 'table_grade':
+                headers = ['seating_type', 'seating', 'total', 'checked_in', 'pending']
+                rows = [[row['mode'], row['label'], row['total'], row['checked'], row['total'] - row['checked']] for row in found]
+            else:
+                headers = [{'table': 'table_no', 'area': 'seating_area', 'grade': 'grade_or_area', 'open': 'seating'}[mode],
+                           'total', 'checked_in', 'pending']
+                rows = [[row['key'] if mode != 'open' else row['label'], row['total'], row['checked'], row['total'] - row['checked']] for row in found]
         elif kind == 'history':
             headers = ['checkin_id', 'attendee_id', 'name', 'checked_at_Asia_Taipei', 'operator', 'method',
                        'undone_at_Asia_Taipei', 'undone_by', 'undo_reason']

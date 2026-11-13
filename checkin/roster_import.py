@@ -89,7 +89,7 @@ def read_roster(raw, filename, profile='auto'):
         fields = [mapping.get(header) for header in headers]
         if (not headers or None in fields or len(fields) != len(set(fields))
                 or not {'attendee_id', 'name'}.issubset(fields)):
-            raise ValueError('欄名不符或重複。校園模板需有「姓名、學號」，可選年級、職稱、電子郵件地址；一般模板需有 attendee_id、name。')
+            raise ValueError('欄名不符或重複。校園模板需有「姓名、學號」，可選年級、職稱、桌次、電子郵件地址；一般模板需有 attendee_id、name。')
         if len(source) - 1 > 200:
             raise ValueError('單次名冊不得超過 200 筆。')
         result, errors = [], []

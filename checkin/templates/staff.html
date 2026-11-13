@@ -19,7 +19,7 @@
 <div id="staff-message" role="status" aria-live="polite" hidden></div>
 <section id="confirmation" class="card confirmation" hidden aria-live="polite">
   <p id="result-label" class="eyebrow">請核對來賓</p><h2 id="result-name" class="guest-name"></h2>
-  <dl class="guest-details"><div><dt>{{ '學號／編號' if event_preferences.roster_profile == 'campus' else '參加者編號' }}</dt><dd id="result-id"></dd></div><div><dt>單位／系所</dt><dd id="result-affiliation"></dd></div><div><dt id="result-seat-label">{{ '桌次' if event_preferences.seating_mode == 'table' else '座位安排' if event_preferences.seating_mode == 'open' else '區域' }}</dt><dd id="result-table" class="table-number"></dd></div><div><dt>目前狀態</dt><dd id="result-status"></dd></div></dl>
+  <dl class="guest-details"><div><dt>{{ '學號／編號' if event_preferences.roster_profile == 'campus' else '參加者編號' }}</dt><dd id="result-id"></dd></div><div><dt>單位／系所</dt><dd id="result-affiliation"></dd></div><div><dt id="result-seat-label">{{ '桌次' if event_preferences.seating_mode == 'table' else '座位安排' if event_preferences.seating_mode in ('open','table_grade') else '區域' }}</dt><dd id="result-table" class="table-number"></dd></div><div><dt>目前狀態</dt><dd id="result-status"></dd></div></dl>
   <p id="result-history" class="muted"></p>
   <button id="confirm-checkin" class="primary full" type="button">確認報到</button>
   <button id="next-guest" class="full" type="button">繼續下一位</button>
